@@ -1,0 +1,410 @@
+/* ========================================
+   LabGear Registration Design
+   ======================================== */
+
+.lg-register-panel {
+  width: 100%;
+  text-align: left;
+}
+
+.lg-register-heading {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.lg-register-heading-icon {
+  width: 54px;
+  height: 54px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto 15px;
+}
+
+.lg-register-heading h2 {
+  font-size: 25px;
+  color: #142d4e;
+  margin-bottom: 7px;
+}
+
+.lg-register-heading p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Progress indicator */
+
+.lg-register-progress {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 25px 0 30px;
+}
+
+.lg-register-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 3px solid #e2e8f0;
+  padding-bottom: 13px;
+  color: #94a3b8;
+}
+
+.lg-register-progress-step span {
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lg-register-progress-step small {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lg-register-progress-step.active {
+  color: #2563eb;
+  border-color: #2563eb;
+}
+
+.lg-register-progress-step.active span {
+  background: #2563eb;
+  color: white;
+}
+
+.lg-register-progress-step.completed {
+  color: #16a34a;
+  border-color: #16a34a;
+}
+
+.lg-register-progress-step.completed span {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+/* Form sections */
+
+.lg-register-section {
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.lg-register-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  color: #142d4e;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 20px;
+}
+
+.lg-register-section h3 svg {
+  color: #2563eb;
+}
+
+.lg-register-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px 20px;
+}
+
+.lg-register-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.lg-register-field label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lg-register-optional {
+  color: #dc2626;
+  font-size: 11px;
+}
+
+.lg-register-field .lg-input {
+  min-width: 0;
+  min-height: 44px;
+  background: #fff;
+}
+
+.lg-register-field input[readonly] {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.lg-register-error {
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.lg-register-description {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+/* Password */
+
+.lg-register-password {
+  position: relative;
+}
+
+.lg-register-password input {
+  padding-right: 48px;
+}
+
+.lg-register-password button {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  padding: 6px;
+}
+
+.lg-register-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lg-register-strength-bar {
+  height: 6px;
+  flex: 1;
+  border-radius: 10px;
+  background: #e2e8f0;
+}
+
+.lg-register-strength-bar.weak {
+  background: #dc2626;
+}
+
+.lg-register-strength-bar.medium {
+  background: #d97706;
+}
+
+.lg-register-strength-bar.strong {
+  background: #16a34a;
+}
+
+/* Privacy */
+
+.lg-register-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 15px 0;
+}
+
+.lg-register-consent input {
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  accent-color: #2563eb;
+  flex-shrink: 0;
+}
+
+.lg-register-consent label {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* Navigation */
+
+.lg-register-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 5px;
+}
+
+.lg-register-development-notice {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+/* Registration modal */
+.landing-modal.landing-modal-register {
+  width: min(100%, 850px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 30px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .landing-modal.landing-modal-register {
+    padding: 22px 16px;
+  }
+
+  .lg-register-grid {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .lg-register-section {
+    padding: 15px;
+  }
+
+  .lg-register-progress-step {
+    flex-direction: column;
+    text-align: center;
+    gap: 5px;
+  }
+
+  .lg-register-heading h2 {
+    font-size: 21px;
+  }
+
+  /* ========================================
+   LabGear - Privacy Notice
+   ======================================== */
+
+  .lgpn-container {
+    margin-bottom: 17px;
+    border: 1px solid #bfdbfe;
+    border-radius: 11px;
+    background: #f8fbff;
+    overflow: hidden;
+  }
+
+  .lgpn-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    list-style: none;
+  }
+
+  .lgpn-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .lgpn-summary > svg:first-child {
+    flex-shrink: 0;
+  }
+
+  .lgpn-summary span {
+    flex: 1;
+  }
+
+  .lgpn-summary:hover {
+    background: #eff6ff;
+  }
+
+  .lgpn-summary:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: -3px;
+  }
+
+  .lgpn-chevron {
+    transition: transform 0.2s;
+  }
+
+  .lgpn-container[open] .lgpn-chevron {
+    transform: rotate(180deg);
+  }
+
+  .lgpn-content {
+    padding: 17px;
+    border-top: 1px solid #dbeafe;
+    background: white;
+  }
+
+  .lgpn-draft {
+    padding: 12px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    background: #fff7ed;
+    color: #9a3412;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+
+  .lgpn-content h4 {
+    margin: 19px 0 8px;
+    color: #142d4e;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .lgpn-content h4:first-of-type {
+    margin-top: 0;
+  }
+
+  .lgpn-content p,
+  .lgpn-content li {
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+
+  .lgpn-content p {
+    margin: 0 0 10px;
+  }
+
+  .lgpn-content ul {
+    padding-left: 20px;
+    margin: 8px 0 12px;
+  }
+
+  .lgpn-content li {
+    margin-bottom: 5px;
+  }
+
+  /* Ensure privacy consent remains compact */
+
+  .lg-register-consent {
+    margin: 13px 0;
+  }
+
+  .lg-register-consent label {
+    line-height: 1.7;
+  }
+
+  @media (max-width: 600px) {
+    .lgpn-summary {
+      padding: 12px;
+    }
+
+    .lgpn-content {
+      padding: 13px;
+    }
+  }
+}

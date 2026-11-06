@@ -1,0 +1,739 @@
+/* ========================================
+   LabGear Dashboard Layout
+   ======================================== */
+
+.lgdash-root {
+  min-height: 100vh;
+  color: #172b4d;
+}
+
+.lgdash-prospect {
+  background: #10253f;
+  color: #dbeafe;
+  font-size: 11px;
+  padding: 8px 20px;
+  text-align: center;
+}
+
+.lgdash-developer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 13px 28px;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+  color: #9a3412;
+}
+
+.lgdash-developer-bar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lgdash-developer-bar strong {
+  font-size: 13px;
+}
+
+.lgdash-developer-bar span {
+  font-size: 12px;
+}
+
+.lgdash-developer-bar label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lgdash-developer-bar select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #fdba74;
+  background: white;
+  color: #172b4d;
+}
+
+.lgdash-app {
+  display: flex;
+  min-height: calc(100vh - 34px);
+}
+
+/* Sidebar */
+
+.lgdash-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: #142d4e;
+  color: white;
+  padding: 26px 15px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.lgdash-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 40px;
+}
+
+.lgdash-brand img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.lgdash-brand div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lgdash-brand strong {
+  font-size: 24px;
+  letter-spacing: -0.5px;
+}
+
+.lgdash-brand small {
+  font-size: 10px;
+  color: #b6c6d9;
+}
+
+.lgdash-sidebar-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  font-weight: 800;
+  color: #8da6c6;
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+
+.lgdash-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lgdash-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 15px;
+  color: #ccdaea;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.lgdash-nav-link:hover {
+  background: #1e416b;
+  color: white;
+}
+
+.lgdash-nav-link.active {
+  background: #2563eb;
+  color: white;
+}
+
+.lgdash-sidebar-bottom {
+  margin-top: auto;
+  padding-top: 30px;
+}
+
+.lgdash-sidebar-help {
+  padding: 19px;
+  border: 1px solid #375371;
+  background: #1c3859;
+  border-radius: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.lgdash-sidebar-help svg {
+  color: #93c5fd;
+}
+
+.lgdash-sidebar-help strong {
+  font-size: 13px;
+}
+
+.lgdash-sidebar-help small {
+  line-height: 1.6;
+  color: #b6c6d9;
+  font-size: 11px;
+}
+
+.lgdash-home-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #dbeafe;
+  padding: 20px 12px 0;
+  font-size: 12px;
+}
+
+.lgdash-home-link:hover {
+  color: white;
+}
+
+/* Main area */
+
+.lgdash-main-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f4f7fb;
+}
+
+.lgdash-topbar {
+  min-height: 78px;
+  padding: 15px 32px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.lgdash-topbar-left,
+.lgdash-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.lgdash-topbar-left > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lgdash-topbar-left strong {
+  font-size: 17px;
+}
+
+.lgdash-topbar-overline {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.lgdash-topbar-right a {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lgdash-topbar-right > svg {
+  color: #64748b;
+}
+
+.lgdash-preview-notice {
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 20px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgdash-avatar {
+  width: 39px;
+  height: 39px;
+  background: #eaf1ff;
+  color: #2563eb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lgdash-mobile-menu {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: #172b4d;
+}
+
+.lgdash-content {
+  flex: 1;
+  padding: 34px;
+  max-width: 1500px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.lgdash-footer {
+  padding: 23px 34px;
+  border-top: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* Welcome */
+
+.lgdash-welcome {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.lgdash-eyebrow {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lgdash-welcome h1 {
+  margin: 9px 0;
+  font-size: clamp(26px, 3vw, 32px);
+  letter-spacing: -0.7px;
+  color: #142d4e;
+}
+
+.lgdash-welcome p {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lgdash-demo-pill {
+  background: #e0edff;
+  color: #2563eb;
+  padding: 9px 13px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Statistics */
+
+.lgdash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 35px;
+}
+
+.lgdash-stat-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  padding: 23px;
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lgdash-stat-icon {
+  width: 45px;
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 12px;
+  margin-bottom: 5px;
+}
+
+.lgdash-stat-card > span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lgdash-stat-card > strong {
+  font-size: 31px;
+  color: #142d4e;
+}
+
+.lgdash-stat-card > small {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Equipment cards */
+
+.lgdash-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.lgdash-section-header h2 {
+  font-size: 21px;
+  margin-bottom: 6px;
+}
+
+.lgdash-section-header p {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+}
+
+.lgdash-outline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #142d4e;
+  border-radius: 9px;
+  padding: 11px 14px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.lgdash-outline-btn:hover {
+  background: #eff6ff;
+}
+
+.lgdash-equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.lgdash-equipment-card {
+  overflow: hidden;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+}
+
+.lgdash-equipment-image {
+  height: 180px;
+  padding: 22px;
+  background: #f0f6fd;
+}
+
+.lgdash-equipment-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lgdash-equipment-info {
+  padding: 20px;
+}
+
+.lgdash-equipment-info small {
+  color: #2563eb;
+  font-size: 11px;
+}
+
+.lgdash-equipment-info h3 {
+  font-size: 15px;
+  margin: 8px 0 15px;
+}
+
+.lgdash-status-demo {
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 20px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Information area */
+
+.lgdash-info-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 17px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  padding: 25px;
+  margin-top: 25px;
+}
+
+.lgdash-info-icon {
+  flex-shrink: 0;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.lgdash-info-card h3 {
+  font-size: 16px;
+  margin: 0 0 9px;
+}
+
+.lgdash-info-card p {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.8;
+  margin: 0;
+}
+
+/* Placeholder screen */
+
+.lgdash-empty-screen {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 65px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.lgdash-empty-icon {
+  padding: 18px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 15px;
+  margin-bottom: 18px;
+}
+
+.lgdash-empty-screen h2 {
+  font-size: 21px;
+}
+
+.lgdash-empty-screen p {
+  max-width: 480px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.8;
+  margin-bottom: 23px;
+}
+
+.lgdash-backdrop {
+  display: none;
+}
+
+/* Responsive */
+
+@media (max-width: 1100px) {
+  .lgdash-sidebar {
+    width: 225px;
+  }
+
+  .lgdash-content {
+    padding: 25px;
+  }
+
+  .lgdash-stats,
+  .lgdash-equipment-grid {
+    gap: 13px;
+  }
+}
+
+@media (max-width: 850px) {
+  .lgdash-sidebar {
+    position: fixed;
+    z-index: 110;
+    top: 0;
+    bottom: 0;
+    left: -280px;
+    width: 260px;
+    transition: left 0.2s;
+    overflow-y: auto;
+  }
+
+  .lgdash-sidebar-open {
+    left: 0;
+  }
+
+  .lgdash-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 105;
+    background: rgba(15, 23, 42, 0.55);
+    border: 0;
+  }
+
+  .lgdash-mobile-menu {
+    display: flex;
+  }
+
+  .lgdash-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lgdash-equipment-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .lgdash-topbar {
+    padding: 15px;
+  }
+
+  .lgdash-topbar-right {
+    gap: 10px;
+  }
+
+  .lgdash-topbar-right > svg,
+  .lgdash-preview-notice {
+    display: none;
+  }
+
+  .lgdash-content {
+    padding: 20px 15px;
+  }
+
+  .lgdash-welcome,
+  .lgdash-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .lgdash-stats,
+  .lgdash-equipment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lgdash-equipment-image {
+    height: 200px;
+  }
+
+  .lgdash-developer-bar {
+    padding: 12px;
+  }
+
+  .lgdash-footer {
+    text-align: center;
+  }
+
+  /* ============================================
+   LABGEAR - FINAL DASHBOARD SCROLLING FIX
+   Sidebar stays still; right side scrolls
+   ============================================ */
+
+  /* Prevent the browser page itself from scrolling */
+  .lgdash-preview-shell {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Keep the development toolbar in place */
+  .lgdash-developer-bar {
+    flex-shrink: 0;
+  }
+
+  /* Dashboard fills remaining screen space */
+  .lgdash-root {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .lgdash-prospect {
+    flex-shrink: 0;
+  }
+
+  .lgdash-app {
+    display: flex;
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* DESKTOP: Sidebar NEVER moves when content scrolls */
+  @media (min-width: 851px) {
+    .lgdash-sidebar {
+      position: relative;
+      top: auto;
+      bottom: auto;
+      left: auto;
+
+      flex: 0 0 260px;
+      width: 260px;
+      height: 100%;
+      min-height: 0;
+
+      overflow: hidden;
+      align-self: stretch;
+      z-index: 10;
+    }
+
+    /* ONLY the right side can scroll */
+    .lgdash-main-area {
+      flex: 1;
+      width: auto;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      margin-left: 0;
+
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+    }
+  }
+
+  /* Smaller desktop */
+  @media (min-width: 851px) and (max-width: 1100px) {
+    .lgdash-sidebar {
+      flex-basis: 225px;
+      width: 225px;
+    }
+  }
+
+  /* MOBILE: Preserve the slide-out sidebar */
+  @media (max-width: 850px) {
+    .lgdash-sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: -280px;
+
+      width: 260px;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+
+      overflow-y: auto;
+      z-index: 110;
+    }
+
+    .lgdash-sidebar-open {
+      left: 0;
+    }
+
+    .lgdash-main-area {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      margin-left: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+  }
+}

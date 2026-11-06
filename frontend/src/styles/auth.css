@@ -1,0 +1,115 @@
+/* LabGear Authentication UI */
+
+.lg-auth-panel {
+  text-align: left;
+}
+
+.lg-auth-heading {
+  text-align: center;
+  margin-bottom: 27px;
+}
+
+.lg-auth-heading h2 {
+  color: #142d4e;
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.lg-auth-heading p {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+}
+
+.lg-auth-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.lg-auth-input-wrap > svg {
+  position: absolute;
+  left: 13px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.lg-auth-input-wrap .lg-input {
+  padding-left: 43px;
+}
+
+.lg-auth-input-wrap:has(.lg-auth-eye) .lg-input {
+  padding-right: 46px;
+}
+
+.lg-auth-eye {
+  position: absolute;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+}
+
+.lg-auth-eye:hover {
+  color: #2563eb;
+}
+
+.lg-auth-forgot {
+  text-align: right;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  margin: -4px 0 20px;
+}
+
+/* Visual placeholder only, not a working CAPTCHA */
+
+.lg-auth-captcha {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.lg-auth-captcha > svg {
+  flex-shrink: 0;
+  color: #2563eb;
+}
+
+.lg-auth-captcha strong {
+  font-size: 13px;
+  color: #142d4e;
+}
+
+.lg-auth-captcha p {
+  margin: 5px 0 0;
+  color: #64748b;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+.lg-auth-submit {
+  width: 100%;
+}
+
+.lg-auth-dev-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .lg-auth-heading h2 {
+    font-size: 23px;
+  }
+}

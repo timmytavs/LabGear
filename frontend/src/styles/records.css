@@ -1,0 +1,430 @@
+/* LabGear Reservation and Borrowing Records */
+
+.lgrec-page {
+  width: 100%;
+}
+
+.lgrec-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: linear-gradient(120deg, #142d4e, #2563eb);
+  color: white;
+  border-radius: 16px;
+  padding: 29px;
+  margin-bottom: 23px;
+}
+
+.lgrec-heading h2 {
+  color: white;
+  font-size: 24px;
+  margin-bottom: 9px;
+}
+
+.lgrec-heading p {
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lgrec-heading-icon {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 15px;
+  border-radius: 12px;
+}
+
+.lgrec-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 17px;
+  margin-bottom: 23px;
+}
+
+.lgrec-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  padding: 22px;
+}
+
+.lgrec-stat span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.lgrec-stat strong {
+  color: #142d4e;
+  font-size: 29px;
+}
+
+.lgrec-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 13px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+
+.lgrec-search {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.lgrec-search svg {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.lgrec-search input,
+.lgrec-toolbar select {
+  border: 1px solid #cbd5e1;
+  background: white;
+  border-radius: 9px;
+  padding: 12px;
+  min-height: 44px;
+  color: #172b4d;
+}
+
+.lgrec-search input {
+  width: 100%;
+  padding-left: 43px;
+}
+
+.lgrec-toolbar button {
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 12px 18px;
+  background: white;
+  color: #334155;
+  font-weight: 600;
+}
+
+.lgrec-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 17px;
+}
+
+.lgrec-list-header h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.lgrec-list-header span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.lgrec-records {
+  border-radius: 14px;
+  overflow: hidden;
+  background: white;
+  border: 1px solid #e2e8f0;
+}
+
+.lgrec-item {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) 1fr 100px 110px;
+  align-items: center;
+  gap: 18px;
+  padding: 17px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lgrec-item:last-child {
+  border-bottom: 0;
+}
+
+.lgrec-item-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 14px;
+}
+
+.lgrec-thumbnail {
+  flex-shrink: 0;
+  width: 70px;
+  height: 65px;
+  padding: 9px;
+  background: #eff6ff;
+  border-radius: 10px;
+}
+
+.lgrec-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lgrec-item-name h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #142d4e;
+}
+
+.lgrec-item-name small {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.lgrec-item-date {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lgrec-item-date span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.lgrec-item-date strong {
+  font-size: 12px;
+}
+
+.lgrec-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgrec-status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.lgrec-status-approved,
+.lgrec-status-returned,
+.lgrec-status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.lgrec-status-issued {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.lgrec-status-rejected,
+.lgrec-status-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.lgrec-details-button {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 10px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.lgrec-details-button:hover {
+  background: #dbeafe;
+}
+
+.lgrec-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 17px;
+  background: #eff6ff;
+  border-radius: 11px;
+  color: #1e40af;
+}
+
+.lgrec-notice p {
+  margin: 0;
+  line-height: 1.7;
+  font-size: 12px;
+}
+
+.lgrec-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 50px 20px;
+  background: white;
+  border-radius: 13px;
+}
+
+.lgrec-empty svg {
+  color: #94a3b8;
+}
+
+.lgrec-empty h3 {
+  margin: 15px 0 6px;
+}
+
+.lgrec-empty p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lgrec-empty button {
+  background: white;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 10px 17px;
+}
+
+/* Details modal */
+
+.lgrec-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.lgrec-modal {
+  width: min(100%, 500px);
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  background: white;
+  border-radius: 17px;
+  padding: 28px;
+}
+
+.lgrec-modal-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  border: 0;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.lgrec-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  margin-bottom: 24px;
+  padding-right: 25px;
+}
+
+.lgrec-modal-header img {
+  width: 100px;
+  height: 90px;
+  object-fit: contain;
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.lgrec-modal-header h2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+  color: #142d4e;
+}
+
+.lgrec-modal-header p {
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.lgrec-details {
+  border-top: 1px solid #e2e8f0;
+}
+
+.lgrec-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+}
+
+.lgrec-detail-row span {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.lgrec-detail-row strong {
+  color: #172b4d;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.lgrec-close-button {
+  margin-top: 22px;
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: #2563eb;
+  color: white;
+  padding: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 1050px) {
+  .lgrec-item {
+    grid-template-columns: minmax(180px, 1.5fr) 1fr;
+  }
+
+  .lgrec-status,
+  .lgrec-details-button {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 600px) {
+  .lgrec-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .lgrec-heading {
+    padding: 22px;
+  }
+
+  .lgrec-item {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
+  .lgrec-modal {
+    padding: 20px;
+  }
+
+  .lgrec-detail-row {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .lgrec-detail-row strong {
+    text-align: left;
+  }
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="100" viewBox="0 0 360 100" role="img" aria-label="LabGear logo">
+<rect x="3" y="10" width="80" height="80" rx="22" fill="#142D4E"/>
+<path d="M33 30v16L23 63a11 11 0 0 0 10 16h20a11 11 0 0 0 10-16L53 46V30" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M28 60c11-7 21 6 31-1l4 10a10 10 0 0 1-10 10H33a10 10 0 0 1-10-10z" fill="#60A5FA"/>
+<path d="M29 30h28" stroke="#fff" stroke-width="5" stroke-linecap="round"/><circle cx="44" cy="64" r="3" fill="#DBEAFE"/><circle cx="52" cy="71" r="2" fill="#DBEAFE"/>
+<text x="104" y="58" fill="#142D4E" font-size="39" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="-1.8">Lab<tspan fill="#2563EB">Gear</tspan></text>
+<text x="106" y="78" fill="#64748B" font-size="12" font-family="Arial, Helvetica, sans-serif" letter-spacing="1.45">LABORATORY RESERVATIONS</text>
+</svg>

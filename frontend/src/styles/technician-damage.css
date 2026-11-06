@@ -1,0 +1,467 @@
+/* LabGear - Technician Damage Reports */
+
+.lgdm-page {
+  width: 100%;
+}
+
+.lgdm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  margin-bottom: 24px;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(120deg, #142d4e, #2563eb);
+}
+
+.lgdm-banner span {
+  color: #bfdbfe;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+.lgdm-banner h2 {
+  color: white;
+  margin: 9px 0;
+  font-size: 25px;
+}
+
+.lgdm-banner p {
+  margin: 0;
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.lgdm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.lgdm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: white;
+}
+
+.lgdm-stat span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lgdm-stat strong {
+  font-size: 29px;
+  color: #142d4e;
+}
+
+.lgdm-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 13px;
+  padding: 18px;
+  margin-bottom: 26px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: white;
+}
+
+.lgdm-search {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.lgdm-search svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.lgdm-search input,
+.lgdm-toolbar select {
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #172b4d;
+}
+
+.lgdm-search input {
+  width: 100%;
+  padding-left: 43px;
+}
+
+.lgdm-toolbar button {
+  padding: 12px 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #334155;
+  font-weight: 600;
+}
+
+.lgdm-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 17px;
+}
+
+.lgdm-section-heading h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.lgdm-section-heading span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lgdm-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: white;
+}
+
+.lgdm-table {
+  width: 100%;
+  min-width: 770px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.lgdm-table th {
+  padding: 16px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.lgdm-table td {
+  padding: 16px;
+  border-top: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.lgdm-equipment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lgdm-equipment img {
+  width: 59px;
+  height: 59px;
+  padding: 9px;
+  border-radius: 10px;
+  background: #eff6ff;
+  object-fit: contain;
+}
+
+.lgdm-equipment div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lgdm-equipment strong {
+  color: #142d4e;
+}
+
+.lgdm-equipment small {
+  color: #64748b;
+  text-transform: none;
+}
+
+.lgdm-status {
+  display: inline-flex;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lgdm-status.unreported {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.lgdm-status.open {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.lgdm-status.in_review {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.lgdm-status.resolved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.lgdm-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 13px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lgdm-view:hover {
+  background: #dbeafe;
+}
+
+.lgdm-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: 55px 22px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: white;
+}
+
+.lgdm-empty svg {
+  color: #94a3b8;
+}
+
+.lgdm-empty h3 {
+  margin: 16px 0 8px;
+}
+
+.lgdm-empty p {
+  max-width: 440px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.lgdm-information,
+.lgdm-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 17px;
+  margin-top: 22px;
+  border-radius: 11px;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.lgdm-notice {
+  margin-top: 0;
+  margin-bottom: 20px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.lgdm-information svg,
+.lgdm-notice svg {
+  flex-shrink: 0;
+}
+
+.lgdm-information p,
+.lgdm-notice p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* Details modal */
+
+.lgdm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.lgdm-modal {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 28px;
+  border-radius: 18px;
+  background: white;
+}
+
+.lgdm-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.lgdm-modal-heading {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 24px;
+  padding-right: 24px;
+}
+
+.lgdm-modal-heading > svg {
+  flex-shrink: 0;
+  color: #dc2626;
+}
+
+.lgdm-modal-heading h2 {
+  margin: 0 0 7px;
+  color: #142d4e;
+  font-size: 21px;
+}
+
+.lgdm-modal-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.lgdm-detail-list {
+  border-top: 1px solid #e2e8f0;
+}
+
+.lgdm-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 13px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lgdm-detail-row span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.lgdm-detail-row strong {
+  max-width: 65%;
+  text-align: right;
+  overflow-wrap: anywhere;
+  color: #172b4d;
+  font-size: 12px;
+}
+
+.lgdm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.lgdm-form h3 {
+  font-size: 17px;
+}
+
+.lgdm-form label {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lgdm-form select,
+.lgdm-form textarea {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #172b4d;
+}
+
+.lgdm-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.lgdm-primary {
+  min-height: 44px;
+  padding: 12px;
+  border: 0;
+  border-radius: 9px;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+}
+
+.lgdm-primary:hover {
+  background: #1d4ed8;
+}
+
+@media (max-width: 1050px) {
+  .lgdm-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .lgdm-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .lgdm-banner {
+    padding: 22px;
+  }
+
+  .lgdm-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lgdm-search {
+    min-width: 0;
+  }
+
+  .lgdm-modal {
+    padding: 20px;
+  }
+
+  .lgdm-detail-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .lgdm-detail-row strong {
+    max-width: 100%;
+    text-align: left;
+  }
+}

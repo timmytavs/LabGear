@@ -1,0 +1,577 @@
+/* =========================================
+   LabGear - Admin Security Monitoring
+   ========================================= */
+
+.lgsec-page {
+  width: 100%;
+}
+
+.lgsec-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  margin-bottom: 22px;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(120deg, #142d4e, #2563eb);
+}
+
+.lgsec-banner span {
+  color: #bfdbfe;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+.lgsec-banner h2 {
+  color: white;
+  font-size: 25px;
+  margin: 9px 0;
+}
+
+.lgsec-banner p {
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lgsec-demo-notice,
+.lgsec-readonly-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px 18px;
+  border-radius: 11px;
+  background: #eff6ff;
+  color: #1e40af;
+  margin-bottom: 24px;
+}
+
+.lgsec-demo-notice svg,
+.lgsec-readonly-note svg {
+  flex-shrink: 0;
+}
+
+.lgsec-demo-notice p,
+.lgsec-readonly-note p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lgsec-readonly-note {
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+
+.lgsec-section-heading,
+.lgsec-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.lgsec-section-heading h3,
+.lgsec-panel-heading h3 {
+  font-size: 18px;
+  color: #142d4e;
+  margin: 0 0 6px;
+}
+
+.lgsec-section-heading p,
+.lgsec-panel-heading p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+.lgsec-panel-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.lgsec-panel-heading h3 svg {
+  color: #2563eb;
+}
+
+/* Security statistics */
+
+.lgsec-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 25px;
+}
+
+.lgsec-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.lgsec-stat-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: #eff6ff;
+  color: #2563eb;
+  margin-bottom: 4px;
+}
+
+.lgsec-stat-icon.green {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.lgsec-stat-icon.red {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.lgsec-stat-icon.orange {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.lgsec-stat > span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lgsec-stat strong {
+  font-size: 29px;
+  color: #142d4e;
+}
+
+.lgsec-stat small {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Monitoring panels */
+
+.lgsec-monitor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.lgsec-panel {
+  min-width: 0;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+}
+
+/* 24-hour bar chart */
+
+.lgsec-chart {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  height: 215px;
+  gap: 5px;
+  padding-top: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lgsec-chart-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.lgsec-chart-track {
+  width: 100%;
+  max-width: 22px;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.lgsec-bar {
+  width: 100%;
+  border-radius: 5px 5px 0 0;
+  background: #3b82f6;
+  min-height: 0;
+}
+
+.lgsec-bar.level-0 {
+  height: 0%;
+}
+.lgsec-bar.level-1 {
+  height: 10%;
+}
+.lgsec-bar.level-2 {
+  height: 20%;
+}
+.lgsec-bar.level-3 {
+  height: 30%;
+}
+.lgsec-bar.level-4 {
+  height: 40%;
+}
+.lgsec-bar.level-5 {
+  height: 50%;
+}
+.lgsec-bar.level-6 {
+  height: 60%;
+}
+.lgsec-bar.level-7 {
+  height: 70%;
+}
+.lgsec-bar.level-8 {
+  height: 80%;
+}
+.lgsec-bar.level-9 {
+  height: 90%;
+}
+.lgsec-bar.level-10 {
+  height: 100%;
+}
+
+.lgsec-chart-column small {
+  height: 22px;
+  font-size: 9px;
+  color: #94a3b8;
+  margin-top: 7px;
+}
+
+.lgsec-chart-footnote {
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 13px 0 0;
+}
+
+/* Top IP addresses */
+
+.lgsec-ip-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.lgsec-ip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lgsec-ip-row:last-child {
+  border-bottom: none;
+}
+
+.lgsec-ip-row > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lgsec-ip-row > div > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lgsec-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lgsec-ip-row strong {
+  font-size: 12px;
+  color: #172b4d;
+  overflow-wrap: anywhere;
+}
+
+.lgsec-ip-row small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.lgsec-ip-status {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lgsec-ip-status.blocked {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Security flags */
+
+.lgsec-flags-panel {
+  margin-bottom: 24px;
+}
+
+.lgsec-flags-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.lgsec-flag {
+  padding: 17px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #f8fafc;
+}
+
+.lgsec-flag-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.lgsec-flag-top strong {
+  font-size: 13px;
+  color: #142d4e;
+}
+
+.lgsec-severity {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 6px 9px;
+  border-radius: 6px;
+}
+
+.lgsec-severity.high {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.lgsec-severity.medium {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.lgsec-severity.low {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.lgsec-flag code {
+  color: #2563eb;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.lgsec-flag p {
+  margin: 12px 0 0;
+  color: #64748b;
+  line-height: 1.7;
+  font-size: 12px;
+}
+
+/* Security events */
+
+.lgsec-count {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgsec-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.lgsec-filters label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 140px;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.lgsec-filters input,
+.lgsec-filters select {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #172b4d;
+}
+
+.lgsec-filter-input {
+  position: relative;
+}
+
+.lgsec-filter-input svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.lgsec-filter-input input {
+  padding-left: 32px;
+}
+
+.lgsec-filters > button {
+  min-height: 43px;
+  padding: 11px 15px;
+  background: white;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lgsec-filters > button:hover {
+  background: #f1f5f9;
+}
+
+/* Read-only event table */
+
+.lgsec-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+}
+
+.lgsec-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.lgsec-table th {
+  padding: 14px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgsec-table td {
+  padding: 14px;
+  border-top: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.lgsec-event-label {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lgsec-no-records {
+  text-align: center;
+  padding: 35px !important;
+  color: #64748b !important;
+}
+
+/* Responsive */
+
+@media (max-width: 1200px) {
+  .lgsec-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1000px) {
+  .lgsec-monitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lgsec-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .lgsec-banner {
+    padding: 22px;
+  }
+
+  .lgsec-stat-grid,
+  .lgsec-flags-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lgsec-panel {
+    padding: 17px;
+  }
+
+  .lgsec-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lgsec-filters label {
+    width: 100%;
+    min-width: 0;
+    flex: auto;
+  }
+
+  .lgsec-chart {
+    gap: 3px;
+  }
+
+  .lgsec-chart-column small {
+    font-size: 8px;
+  }
+}

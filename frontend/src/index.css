@@ -1,0 +1,285 @@
+/* =========================================
+   LabGear - Global Design System
+   ========================================= */
+
+:root {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  /* Primary colors */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+
+  /* Navigation */
+  --sidebar-bg: #142d4e;
+  --sidebar-hover: #1e416b;
+  --sidebar-active: #2563eb;
+
+  /* Backgrounds */
+  --background: #f4f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+
+  /* Text */
+  --text-primary: #172b4d;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+
+  /* Borders */
+  --border: #e2e8f0;
+
+  /* Status colors */
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --header-height: 72px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 20px rgba(15, 23, 42, 0.05);
+  --shadow-hover: 0 8px 30px rgba(15, 23, 42, 0.09);
+}
+
+/* Reset */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--text-primary);
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin-top: 0;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* =========================================
+   Reusable Layout
+   ========================================= */
+
+.lg-container {
+  width: min(100% - 40px, 1280px);
+  margin-inline: auto;
+}
+
+.lg-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+
+.lg-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* =========================================
+   Buttons
+   ========================================= */
+
+.lg-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-weight: 600;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+
+.lg-button-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.lg-button-primary:hover {
+  background: var(--primary-hover);
+}
+
+.lg-button-secondary {
+  background: white;
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.lg-button-secondary:hover {
+  background: var(--surface-muted);
+}
+
+.lg-button-danger {
+  background: var(--danger);
+  color: white;
+}
+
+.lg-button-danger:hover {
+  background: #b91c1c;
+}
+
+.lg-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* =========================================
+   Form Controls
+   ========================================= */
+
+.lg-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.lg-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lg-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--text-primary);
+}
+
+.lg-input:focus {
+  border-color: var(--primary);
+}
+
+.lg-input::placeholder {
+  color: var(--text-muted);
+}
+
+.lg-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.lg-required {
+  color: var(--danger);
+}
+
+/* =========================================
+   Status Badges
+   ========================================= */
+
+.lg-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lg-status-success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.lg-status-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.lg-status-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* =========================================
+   Responsive Layout
+   ========================================= */
+
+@media (max-width: 768px) {
+  .lg-container {
+    width: min(100% - 24px, 1280px);
+  }
+
+  .lg-card {
+    padding: 18px;
+  }
+
+  .lg-card-title {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .lg-button {
+    transition: none;
+  }
+}

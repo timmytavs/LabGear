@@ -1,0 +1,492 @@
+/* =========================================
+   LabGear Equipment Catalog
+   ========================================= */
+
+.lgeq-page {
+  width: 100%;
+}
+
+.lgeq-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  background: linear-gradient(120deg, #142d4e, #2563eb);
+  color: white;
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+
+.lgeq-banner h2 {
+  color: white;
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.lgeq-banner p {
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lgeq-banner-icon {
+  padding: 17px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+}
+
+.lgeq-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.lgeq-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  padding: 20px;
+  border-radius: 13px;
+}
+
+.lgeq-summary span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lgeq-summary strong {
+  font-size: 27px;
+  color: #142d4e;
+}
+
+.lgeq-filters {
+  padding: 22px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  margin-bottom: 26px;
+}
+
+.lgeq-search {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.lgeq-search svg {
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.lgeq-search input {
+  width: 100%;
+  padding: 14px 16px 14px 45px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #172b4d;
+}
+
+.lgeq-filter-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.lgeq-filter-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 170px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.lgeq-filter-controls select {
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #172b4d;
+}
+
+.lgeq-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 9px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.lgeq-reset:hover {
+  background: #f1f5f9;
+}
+
+.lgeq-results {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.lgeq-results h3 {
+  font-size: 19px;
+  margin: 0;
+}
+
+.lgeq-results span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Equipment grid */
+
+.lgeq-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.lgeq-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.lgeq-card-image {
+  height: 210px;
+  position: relative;
+  background: #f0f6fd;
+  padding: 25px;
+}
+
+.lgeq-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lgeq-status {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  padding: 7px 11px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgeq-status.available {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.lgeq-status.unavailable {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.lgeq-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 21px;
+}
+
+.lgeq-category {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lgeq-card-content h3 {
+  font-size: 17px;
+  color: #142d4e;
+  margin: 10px 0;
+}
+
+.lgeq-card-content > p {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.7;
+  min-height: 62px;
+}
+
+.lgeq-card-details {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+  margin-top: auto;
+}
+
+.lgeq-card-details > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lgeq-card-details span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.lgeq-card-details strong {
+  font-size: 12px;
+  color: #172b4d;
+}
+
+.lgeq-view-button,
+.lgeq-submit {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  margin-top: 20px;
+  padding: 13px;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.lgeq-view-button:hover,
+.lgeq-submit:hover {
+  background: #1d4ed8;
+}
+
+/* Empty results */
+
+.lgeq-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 55px 20px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.lgeq-empty svg {
+  color: #94a3b8;
+  margin-bottom: 15px;
+}
+
+.lgeq-empty h3 {
+  margin-bottom: 8px;
+}
+
+.lgeq-empty p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lgeq-empty button {
+  margin-top: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 10px 18px;
+  background: white;
+  color: #2563eb;
+}
+
+.lgeq-preview-note {
+  margin-top: 25px;
+  padding: 18px;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.lgeq-preview-note p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* Detail modal */
+
+.lgeq-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.lgeq-modal {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 18px;
+  padding: 28px;
+}
+
+.lgeq-modal-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px;
+  color: #475569;
+}
+
+.lgeq-modal-image {
+  display: block;
+  width: 180px;
+  height: 150px;
+  object-fit: contain;
+  margin: 0 auto 20px;
+}
+
+.lgeq-modal h2 {
+  font-size: 22px;
+  text-align: center;
+  color: #142d4e;
+}
+
+.lgeq-modal-description {
+  color: #64748b;
+  line-height: 1.7;
+  font-size: 13px;
+  text-align: center;
+}
+
+.lgeq-modal-details {
+  padding: 17px;
+  background: #f8fafc;
+  border-radius: 11px;
+}
+
+.lgeq-modal-details p {
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.lgeq-reservation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 25px;
+}
+
+.lgeq-reservation-form h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  margin-bottom: 13px;
+}
+
+.lgeq-reservation-form h3 svg {
+  color: #2563eb;
+}
+
+.lgeq-reservation-form label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.lgeq-reservation-form input,
+.lgeq-reservation-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 12px;
+  color: #172b4d;
+  background: white;
+  margin-bottom: 10px;
+}
+
+.lgeq-form-error {
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.lgeq-draft-success {
+  padding: 12px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.lgeq-unavailable-message {
+  margin-top: 20px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* Responsive */
+
+@media (max-width: 1100px) {
+  .lgeq-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .lgeq-grid,
+  .lgeq-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .lgeq-banner {
+    padding: 20px;
+  }
+
+  .lgeq-filters {
+    padding: 16px;
+  }
+
+  .lgeq-filter-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lgeq-filter-controls label {
+    min-width: 0;
+  }
+
+  .lgeq-modal {
+    padding: 20px;
+  }
+}
