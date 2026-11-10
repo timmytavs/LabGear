@@ -1,5 +1,5 @@
 """
-LabGear Backend File 76 — authenticated reservation and technician decision API.
+LabGear Backend File 113 — reservation, technician decision, issue and return API.
 
 Destination: backend/app/api/routes/reservations.py (REPLACE existing file).
 
@@ -10,6 +10,11 @@ Existing endpoints preserved:
 New technician endpoints:
     GET  /api/reservations/pending
     POST /api/reservations/{reservation_id}/decision
+
+New File 113 technician endpoints:
+    GET  /api/reservations/active
+    POST /api/reservations/{reservation_id}/issue
+    POST /api/reservations/{reservation_id}/return
 
 Business rules:
     * Students and instructors may submit reservation requests.
@@ -28,6 +33,10 @@ Business rules:
     * Rejection requires a recorded reason.
     * Reservation, decision, unit allocation, inventory status, and activity
       log changes commit in one transaction.
+    * Issue requires approved status and already allocated units.
+    * Return requires issued status; notes and condition are logged.
+    * The issue/return feature operates on ALL allocated units in this first
+      academic prototype; partial returns can be added separately later.
 
 Uses existing PostgreSQL models. No schema changes or migrations.
 """
@@ -881,4 +890,327 @@ def decide_reservation(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Reservation decision service is temporarily unavailable.",
+        ) from None
+
+
+# ================================================================
+# File 113 — Equipment issuance and check-in for technicians
+# ================================================================
+# These routes reuse the existing reservations, reservation_units,
+# equipment_units and activity_logs tables; no new tables are needed.
+
+class EquipmentReturnRequest(BaseModel):
+    """Condition is applied to all units in this simple issue/return flow."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        hide_input_in_errors=True,
+    )
+
+    condition: Literal["good", "damaged"] = "good"
+    remarks: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("remarks")
+    @classmethod
+    def clean_return_remarks(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @model_validator(mode="after")
+    def require_damage_notes(self) -> "EquipmentReturnRequest":
+        if self.condition == "damaged" and (
+            self.remarks is None or len(self.remarks) < 5
+        ):
+            raise ValueError(
+                "Describe the damage using at least 5 characters."
+            )
+        return self
+
+
+class EquipmentHandoverResponse(BaseModel):
+    reservation_id: int
+    reservation_code: str
+    equipment_name: str
+    status: str
+    quantity: int
+    asset_tags: list[str]
+    condition: str | None = None
+    message: str
+
+
+@router.get("/active", response_model=PendingReservationListResponse)
+def list_active_reservations(
+    request: Request,
+    response: Response,
+    db: DbSession,
+    page: int = Query(default=1, ge=1, le=10000),
+    page_size: int = Query(default=10, ge=1, le=50),
+) -> PendingReservationListResponse:
+    """Technician queue for approved bookings awaiting issue or issued items awaiting return."""
+    principal = _authenticated_session(request, db, method="GET")
+    _require_technician(principal)
+
+    statuses = ("approved", "issued")
+    try:
+        total = int(db.execute(
+            select(func.count(Reservation.id)).where(
+                Reservation.status.in_(statuses)
+            )
+        ).scalar_one() or 0)
+
+        rows = db.execute(
+            select(
+                Reservation,
+                Equipment.equipment_code,
+                Equipment.equipment_name,
+                User,
+            )
+            .join(Equipment, Equipment.id == Reservation.equipment_id)
+            .join(User, User.id_number == Reservation.requester_id)
+            .where(Reservation.status.in_(statuses))
+            .order_by(Reservation.created_at.desc(), Reservation.id.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        ).all()
+
+        items = [
+            PendingReservationItemResponse(
+                **_reservation_item(
+                    reservation,
+                    equipment_code=code,
+                    equipment_name=name,
+                ).model_dump(),
+                requester_id=requester.id_number,
+                requester_name=_requester_display_name(requester),
+                requester_username=requester.username,
+                requester_department=requester.department,
+                requester_class_section_or_unit=requester.class_section_or_unit,
+            )
+            for reservation, code, name, requester in rows
+        ]
+
+        response.headers["Cache-Control"] = "no-store"
+        return PendingReservationListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=ceil(total / page_size) if total else 0,
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not load approved and issued reservations.",
+        ) from None
+
+
+def _locked_allocation_rows(db: DbSession, reservation_id: int):
+    """Read the exact units assigned at approval, locking all rows in stable order."""
+    return db.execute(
+        select(ReservationUnit, EquipmentUnit)
+        .join(
+            EquipmentUnit,
+            EquipmentUnit.id == ReservationUnit.equipment_unit_id,
+        )
+        .where(ReservationUnit.reservation_id == reservation_id)
+        .order_by(EquipmentUnit.id.asc())
+        .with_for_update(of=(ReservationUnit, EquipmentUnit))
+    ).all()
+
+
+@router.post(
+    "/{reservation_id}/issue", response_model=EquipmentHandoverResponse
+)
+def issue_reservation(
+    reservation_id: int,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> EquipmentHandoverResponse:
+    """Mark all approved allocated units as physically handed over."""
+    principal = _authenticated_session(request, db, method="POST")
+    _require_technician(principal)
+    if reservation_id <= 0:
+        raise HTTPException(status_code=422, detail="Invalid reservation ID.")
+
+    now = datetime.now(timezone.utc)
+    try:
+        reservation = db.execute(
+            select(Reservation)
+            .where(Reservation.id == reservation_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Reservation not found.")
+        if reservation.status != "approved":
+            raise HTTPException(
+                status_code=409,
+                detail="Only approved reservations can be issued.",
+            )
+
+        # Lock in the same Reservation -> Equipment -> Units order every time.
+        equipment = db.execute(
+            select(Equipment)
+            .where(Equipment.id == reservation.equipment_id)
+            .with_for_update()
+        ).scalar_one()
+        allocation_rows = _locked_allocation_rows(db, reservation_id)
+        if len(allocation_rows) != reservation.quantity:
+            raise HTTPException(
+                status_code=409,
+                detail="The allocated unit count does not match this reservation.",
+            )
+        for allocated, unit in allocation_rows:
+            if allocated.allocation_status != "reserved" or unit.unit_status != "reserved":
+                raise HTTPException(
+                    status_code=409,
+                    detail="One or more allocated units are not ready for issue.",
+                )
+
+        asset_tags = []
+        for allocated, unit in allocation_rows:
+            allocated.allocation_status = "issued"
+            unit.unit_status = "issued"
+            unit.updated_at = now
+            asset_tags.append(unit.asset_tag)
+        reservation.status = "issued"
+        reservation.updated_at = now
+
+        db.add(ActivityLog(
+            event_type="reservation_issued",
+            user_id=principal.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent", "")[:1000],
+            details={
+                "reservation_id": reservation.id,
+                "reservation_code": reservation.reservation_code,
+                "unit_ids": [unit.id for _, unit in allocation_rows],
+                "status": "issued",
+            },
+        ))
+        result = EquipmentHandoverResponse(
+            reservation_id=reservation.id,
+            reservation_code=reservation.reservation_code,
+            equipment_name=equipment.equipment_name,
+            status="issued",
+            quantity=reservation.quantity,
+            asset_tags=asset_tags,
+            message="Equipment issued successfully.",
+        )
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return result
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Equipment issuance service is temporarily unavailable.",
+        ) from None
+
+
+@router.post(
+    "/{reservation_id}/return", response_model=EquipmentHandoverResponse
+)
+def return_reservation(
+    reservation_id: int,
+    payload: EquipmentReturnRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> EquipmentHandoverResponse:
+    """Check in all issued units and record their condition in the activity log."""
+    principal = _authenticated_session(request, db, method="POST")
+    _require_technician(principal)
+    if reservation_id <= 0:
+        raise HTTPException(status_code=422, detail="Invalid reservation ID.")
+
+    now = datetime.now(timezone.utc)
+    try:
+        reservation = db.execute(
+            select(Reservation)
+            .where(Reservation.id == reservation_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Reservation not found.")
+        if reservation.status != "issued":
+            raise HTTPException(
+                status_code=409,
+                detail="Only issued reservations can be checked in.",
+            )
+
+        equipment = db.execute(
+            select(Equipment)
+            .where(Equipment.id == reservation.equipment_id)
+            .with_for_update()
+        ).scalar_one()
+        allocation_rows = _locked_allocation_rows(db, reservation_id)
+        if len(allocation_rows) != reservation.quantity:
+            raise HTTPException(
+                status_code=409,
+                detail="Issued equipment unit records are incomplete.",
+            )
+        for allocated, unit in allocation_rows:
+            if allocated.allocation_status != "issued" or unit.unit_status != "issued":
+                raise HTTPException(
+                    status_code=409,
+                    detail="One or more units have already been checked in or are inconsistent.",
+                )
+
+        asset_tags = []
+        for allocated, unit in allocation_rows:
+            allocated.allocation_status = "returned"
+            unit.unit_status = (
+                "damaged" if payload.condition == "damaged" else "available"
+            )
+            unit.updated_at = now
+            asset_tags.append(unit.asset_tag)
+        # The PostgreSQL reservation status constraint uses "completed" for
+        # a finished return; "returned" is only a unit allocation status.
+        reservation.status = "completed"
+        reservation.updated_at = now
+
+        db.add(ActivityLog(
+            event_type="reservation_returned",
+            user_id=principal.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent", "")[:1000],
+            details={
+                "reservation_id": reservation.id,
+                "reservation_code": reservation.reservation_code,
+                "unit_ids": [unit.id for _, unit in allocation_rows],
+                "condition": payload.condition,
+                "remarks": payload.remarks,
+                "unit_status": "damaged" if payload.condition == "damaged" else "available",
+                "status": "completed",
+            },
+        ))
+        result = EquipmentHandoverResponse(
+            reservation_id=reservation.id,
+            reservation_code=reservation.reservation_code,
+            equipment_name=equipment.equipment_name,
+            # File 114 expects "returned" as the handover action result.
+            # The persisted reservation status is "completed" and is exposed
+            # by GET /api/reservations/my. Keep the action response compatible.
+            status="returned",
+            quantity=reservation.quantity,
+            asset_tags=asset_tags,
+            condition=payload.condition,
+            message="Equipment return recorded successfully.",
+        )
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return result
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Equipment return service is temporarily unavailable.",
         ) from None

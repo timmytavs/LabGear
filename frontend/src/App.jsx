@@ -1,9 +1,9 @@
 /**
- * LabGear Frontend File 108 — connected student/instructor reservation workspace.
+ * LabGear Frontend File 114 — technician approval, equipment issue and return workspace.
  * REPLACE: frontend/src/App.jsx
  *
  * Preserves the existing landing page, authentication, admin monitoring,
- * technician workspace and explicit development-only dashboard preview.
+ * existing student reservation workspace and development-only dashboard preview.
  * Reads the current account from FastAPI GET /api/auth/me; never trusts a
  * browser-stored role. The admin monitoring API independently enforces admin
  * permission and records dashboard access/denials.
@@ -13,10 +13,14 @@
  * navigates immediately without requiring a page reload. This file also
  * refreshes the session after a browser focus/visibility change and on reload.
  *
- * File 108: users may browse the live catalog, submit real reservations via
- * POST /api/reservations, and view their own reservations from PostgreSQL.
- * The existing catalog modal remains preview-only; use Quick Reservation for
- * a real submission. Server-side session/CSRF/role/stock rules stay in FastAPI.
+ * Preserves File 111's working Quick Reservation form and My Reservations.
+ * File 112's pending approval/rejection workflow remains unchanged.
+ * File 114 connects the existing File 113 technician backend endpoints:
+ * GET /api/reservations/active, POST /api/reservations/{id}/issue and
+ * POST /api/reservations/{id}/return. Only the technician workspace changes.
+ * Authorization, CSRF, allocations, issue/return status and audit logs remain
+ * enforced by FastAPI and committed to PostgreSQL.
+ * Equipment catalog's existing preview-only modal remains unchanged.
  *
  * IMPORTANT: do not put admin self-registration into the public form.
  */
@@ -213,16 +217,37 @@ async function reservationApi(path, { method = "GET", body, signal } = {}) {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = data?.detail;
-    const message =
-      typeof detail === "string" && detail.trim()
-        ? detail
-        : response.status === 401
+    let message = typeof detail === "string" ? detail.trim() : "";
+    if (!message && Array.isArray(detail)) {
+      message = detail
+        .slice(0, 4)
+        .map((item) => {
+          const field = Array.isArray(item?.loc)
+            ? String(item.loc[item.loc.length - 1] || "form").replaceAll(
+                "_",
+                " ",
+              )
+            : "form";
+          const problem =
+            typeof item?.msg === "string"
+              ? item.msg.replace(/^Value error,\s*/i, "")
+              : "Invalid value";
+          return `${field}: ${problem}`;
+        })
+        .join("; ");
+    }
+    if (!message) {
+      message =
+        response.status === 401
           ? "Your session has expired. Sign in again."
           : response.status === 403
-            ? "This action was not authorized. Sign in again if necessary."
-            : response.status === 422
-              ? "Check the dates, quantity and reservation details."
-              : `LabGear request failed (HTTP ${response.status}).`;
+            ? "Reservation was denied. Your login security token may be invalid; sign in again."
+            : response.status === 409
+              ? "The requested units are unavailable for those dates. Choose different dates or fewer units."
+              : response.status === 422
+                ? "Check the dates, quantity and reservation details."
+                : `LabGear request failed (HTTP ${response.status}).`;
+    }
     const error = new Error(message);
     error.status = response.status;
     throw error;
@@ -283,6 +308,38 @@ const labelControl = {
   color: "#263f63",
 };
 
+// datetime-local expects local wall-clock time, not a UTC ISO string.
+function toLocalDateTimeValue(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// Select a future demo-ready window; users can still change either field.
+function freshReservationDraft() {
+  const today = new Date();
+  const start = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 1,
+    9,
+    0,
+  );
+  const end = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 1,
+    11,
+    0,
+  );
+  return {
+    equipment_id: "",
+    quantity: "1",
+    reservation_start: toLocalDateTimeValue(start),
+    reservation_end: toLocalDateTimeValue(end),
+    purpose: "",
+  };
+}
+
 function StudentReservationWorkspace({ account, onSessionExpired }) {
   const [view, setView] = useState("catalog");
   const [equipment, setEquipment] = useState([]);
@@ -293,13 +350,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
   const [feedback, setFeedback] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [reload, setReload] = useState(0);
-  const [draft, setDraft] = useState({
-    equipment_id: "",
-    quantity: "1",
-    reservation_start: "",
-    reservation_end: "",
-    purpose: "",
-  });
+  const [draft, setDraft] = useState(freshReservationDraft);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -341,6 +392,21 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
     (item) => String(item.id) === draft.equipment_id,
   );
   const available = Number(selected?.available_units) || 0;
+  const minimumStart = toLocalDateTimeValue(new Date(Date.now() + 60_000));
+  const minimumEnd =
+    draft.reservation_start > minimumStart
+      ? draft.reservation_start
+      : minimumStart;
+
+  function changeReservationField(field, value) {
+    setDraft((previous) => ({
+      ...previous,
+      [field]: value,
+      ...(field === "equipment_id" ? { quantity: "1" } : {}),
+    }));
+    setFeedback("");
+  }
+
   const dateText = (dateString) => {
     const date = new Date(dateString);
     return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
@@ -348,6 +414,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
 
   async function submitReservation(event) {
     event.preventDefault();
+    if (submitting) return;
     setFeedback("");
     const quantity = Number(draft.quantity);
     const start = new Date(draft.reservation_start);
@@ -366,15 +433,14 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
       );
       return;
     }
-    if (
-      Number.isNaN(start.getTime()) ||
-      Number.isNaN(end.getTime()) ||
-      start.getTime() <= Date.now() ||
-      end.getTime() <= start.getTime()
-    ) {
+    if (Number.isNaN(start.getTime()) || start.getTime() <= Date.now()) {
       setFeedback(
-        "Choose a future start time and an end time after the start.",
+        "Reservation start must be in the future. Choose a later date and time.",
       );
+      return;
+    }
+    if (Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+      setFeedback("Reservation end must be after the reservation start.");
       return;
     }
     if (draft.purpose.trim().length < 5 || draft.purpose.trim().length > 1000) {
@@ -393,13 +459,12 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
           reservation_end: end.toISOString(),
         },
       });
-      setDraft({
-        equipment_id: "",
-        quantity: "1",
-        reservation_start: "",
-        reservation_end: "",
-        purpose: "",
-      });
+      if (!created?.reservation_code || created?.status !== "pending") {
+        throw new Error(
+          "FastAPI did not confirm the pending reservation. Check My Reservations before retrying.",
+        );
+      }
+      setDraft(freshReservationDraft());
       setFeedback(
         `Reservation ${created.reservation_code || ""} submitted. Status: ${created.status || "pending"}.`,
       );
@@ -484,8 +549,8 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
             </button>
           </div>
         )}
-        {feedback && (
-          <div role="status" style={{ ...reservationPanel, color: "#21467b" }}>
+        {feedback && view !== "new" && (
+          <div role="status" style={{ ...reservationPanel, color: "#166534" }}>
             {feedback}
           </div>
         )}
@@ -514,6 +579,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
               <p>Loading equipment choices…</p>
             ) : (
               <form
+                noValidate
                 onSubmit={submitReservation}
                 style={{ display: "grid", gap: 18 }}
               >
@@ -524,11 +590,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                     required
                     value={draft.equipment_id}
                     onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        equipment_id: e.target.value,
-                        quantity: "1",
-                      }))
+                      changeReservationField("equipment_id", e.target.value)
                     }
                   >
                     <option value="">Choose equipment</option>
@@ -566,7 +628,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                       required
                       value={draft.quantity}
                       onChange={(e) =>
-                        setDraft((d) => ({ ...d, quantity: e.target.value }))
+                        changeReservationField("quantity", e.target.value)
                       }
                     />
                   </label>
@@ -577,12 +639,13 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                       style={formControl}
                       type="datetime-local"
                       required
+                      min={minimumStart}
                       value={draft.reservation_start}
                       onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          reservation_start: e.target.value,
-                        }))
+                        changeReservationField(
+                          "reservation_start",
+                          e.target.value,
+                        )
                       }
                     />
                   </label>
@@ -592,12 +655,13 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                       style={formControl}
                       type="datetime-local"
                       required
+                      min={minimumEnd}
                       value={draft.reservation_end}
                       onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          reservation_end: e.target.value,
-                        }))
+                        changeReservationField(
+                          "reservation_end",
+                          e.target.value,
+                        )
                       }
                     />
                   </label>
@@ -616,15 +680,36 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                     value={draft.purpose}
                     placeholder="Describe the laboratory experiment or class activity"
                     onChange={(e) =>
-                      setDraft((d) => ({ ...d, purpose: e.target.value }))
+                      changeReservationField("purpose", e.target.value)
                     }
                   />
                 </label>
+                <p style={{ color: "#60748e", margin: 0, fontSize: 13 }}>
+                  Dates use your device's local time. Start must be in the
+                  future; the reservation is saved only after FastAPI confirms
+                  it.
+                </p>
                 {equipment.length === 0 && (
                   <p style={{ color: "#9b1c1c" }}>
                     No reservable equipment loaded. Add active inventory or
                     retry the catalog connection.
                   </p>
+                )}
+                {feedback && (
+                  <div
+                    role="alert"
+                    aria-live="assertive"
+                    style={{
+                      background: "#fff1f2",
+                      border: "1px solid #fecdd3",
+                      color: "#9f1239",
+                      borderRadius: 9,
+                      padding: "12px 14px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {feedback}
+                  </div>
                 )}
                 <button
                   type="submit"
@@ -756,6 +841,1036 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
             )}
           </section>
         )}
+      </div>
+    </main>
+  );
+}
+
+// File 114: equipment handover and returns use the existing File 113 routes.
+// Only backend responses can confirm an issuance or a return. Nothing is
+// persisted locally and no inventory status is ever fabricated by the UI.
+function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [reload, setReload] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [issuingId, setIssuingId] = useState(null);
+  const [returningId, setReturningId] = useState(null);
+  const [condition, setCondition] = useState("good");
+  const [remarks, setRemarks] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    reservationApi(`/api/reservations/active?page=${page}&page_size=10`, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!active) return;
+        if (
+          !Array.isArray(data?.items) ||
+          !Number.isInteger(data?.total) ||
+          !Number.isInteger(data?.pages)
+        ) {
+          throw new Error(
+            "LabGear returned an invalid equipment handover list.",
+          );
+        }
+        setItems(data.items);
+        setTotal(data.total);
+        setPages(data.pages);
+        if (page > 1 && page > Math.max(1, data.pages)) {
+          setPage(Math.max(1, data.pages));
+        }
+      })
+      .catch((error) => {
+        if (!active || error?.name === "AbortError") return;
+        const message =
+          error?.status === 404
+            ? "The handover API is not available yet. Confirm Backend File 113 is installed and FastAPI has restarted."
+            : error?.message ||
+              "Unable to load approved and issued reservations.";
+        setLoadError(message);
+        setItems([]);
+        if (error?.status === 401) onSessionExpired();
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [page, reload, refreshToken, onSessionExpired]);
+
+  const refreshList = () => setReload((value) => value + 1);
+  const showDate = (value) => {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString();
+  };
+
+  function openIssue(id) {
+    if (busyId !== null) return;
+    setIssuingId(id);
+    setReturningId(null);
+    setNotice(null);
+  }
+
+  function openReturn(id) {
+    if (busyId !== null) return;
+    setReturningId(id);
+    setIssuingId(null);
+    setCondition("good");
+    setRemarks("");
+    setNotice(null);
+  }
+
+  async function issueEquipment(item) {
+    if (busyId !== null || item.status !== "approved") return;
+    setBusyId(item.id);
+    setNotice(null);
+    try {
+      const result = await reservationApi(
+        `/api/reservations/${encodeURIComponent(item.id)}/issue`,
+        { method: "POST" },
+      );
+      if (result?.reservation_id !== item.id || result?.status !== "issued") {
+        throw new Error(
+          "FastAPI did not confirm issuance. Refresh before attempting it again.",
+        );
+      }
+      const tags = Array.isArray(result.asset_tags)
+        ? result.asset_tags.filter(Boolean)
+        : [];
+      setNotice({
+        type: "success",
+        message: `Issued ${result.reservation_code}: ${result.quantity} unit(s) handed over${tags.length ? ` (${tags.join(", ")})` : ""}.`,
+      });
+      setIssuingId(null);
+      refreshList();
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error?.message || "Could not record equipment issuance.",
+      });
+      if (error?.status === 401) onSessionExpired();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function recordReturn(item) {
+    if (busyId !== null || item.status !== "issued") return;
+    const note = remarks.trim();
+    if (condition === "damaged" && (note.length < 5 || note.length > 1000)) {
+      setNotice({
+        type: "error",
+        message: "Describe the equipment damage in 5–1000 characters.",
+      });
+      return;
+    }
+    setBusyId(item.id);
+    setNotice(null);
+    try {
+      const result = await reservationApi(
+        `/api/reservations/${encodeURIComponent(item.id)}/return`,
+        {
+          method: "POST",
+          body: { condition, remarks: note || null },
+        },
+      );
+      if (result?.reservation_id !== item.id || result?.status !== "returned") {
+        throw new Error(
+          "FastAPI did not confirm the return. Refresh before attempting it again.",
+        );
+      }
+      setNotice({
+        type: "success",
+        message: `Return recorded for ${result.reservation_code}. ${result.quantity} unit(s) checked in as ${result.condition === "damaged" ? "damaged (not available)" : "good (available)"}.`,
+      });
+      setReturningId(null);
+      setRemarks("");
+      setCondition("good");
+      // The returned reservation leaves the approved/issued queue.
+      if (items.length === 1 && page > 1) setPage((value) => value - 1);
+      else refreshList();
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error?.message || "Could not record the equipment return.",
+      });
+      if (error?.status === 401) onSessionExpired();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section
+      style={reservationPanel}
+      aria-label="Equipment issuance and returns"
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <div>
+          <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>
+            Equipment Issuance & Returns
+          </h2>
+          <p style={{ color: "#60748e", fontSize: 13, margin: 0 }}>
+            {loading
+              ? "Loading equipment handovers…"
+              : `${total} approved or issued reservation${total === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          style={buttonStyle}
+          disabled={loading || busyId !== null}
+          onClick={refreshList}
+        >
+          {loading ? "Refreshing…" : "Refresh handovers"}
+        </button>
+      </div>
+      <p
+        style={{
+          color: "#64748b",
+          fontSize: 13,
+          lineHeight: 1.6,
+          margin: "0 0 18px",
+        }}
+      >
+        Approved requests are ready for physical handover. After the borrower
+        returns all issued units, record their condition to update inventory
+        availability.
+      </p>
+
+      {notice && (
+        <div
+          role={notice.type === "error" ? "alert" : "status"}
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            marginBottom: 16,
+            background: notice.type === "error" ? "#fff1f2" : "#ecfdf5",
+            color: notice.type === "error" ? "#9f1239" : "#166534",
+            border: `1px solid ${notice.type === "error" ? "#fecdd3" : "#a7f3d0"}`,
+          }}
+        >
+          {notice.message}
+        </div>
+      )}
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            marginBottom: 16,
+            background: "#fff1f2",
+            color: "#9f1239",
+          }}
+        >
+          {loadError}
+        </div>
+      )}
+
+      {loading ? (
+        <p style={{ color: "#64748b" }}>
+          Retrieving equipment handovers from FastAPI…
+        </p>
+      ) : loadError ? (
+        <button type="button" style={buttonStyle} onClick={refreshList}>
+          Retry loading handovers
+        </button>
+      ) : items.length === 0 ? (
+        <div
+          style={{
+            padding: "34px 12px",
+            textAlign: "center",
+            color: "#60748e",
+            background: "#f8fbff",
+            borderRadius: 12,
+          }}
+        >
+          No approved or issued reservations on this page.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          {items.map((item) => (
+            <article
+              key={item.id}
+              style={{
+                padding: "18px 20px",
+                border: "1px solid #dbe4f2",
+                borderRadius: 12,
+                background: "#fbfdff",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <strong style={{ color: "#142d4e", fontSize: 16 }}>
+                    {item.equipment_name}
+                  </strong>
+                  <div style={{ color: "#60748e", fontSize: 12, marginTop: 4 }}>
+                    {item.reservation_code} · {item.equipment_code}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background:
+                      item.status === "issued" ? "#dbeafe" : "#dcfce7",
+                    color: item.status === "issued" ? "#1d4ed8" : "#166534",
+                  }}
+                >
+                  {item.status === "issued" ? "Issued" : "Approved"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(min(200px, 100%), 1fr))",
+                  gap: 13,
+                  fontSize: 13,
+                  color: "#344763",
+                }}
+              >
+                <div>
+                  <strong>Borrower:</strong>{" "}
+                  {item.requester_name || item.requester_username || "—"}
+                </div>
+                <div>
+                  <strong>Quantity:</strong> {item.quantity}
+                </div>
+                <div>
+                  <strong>Start:</strong> {showDate(item.reservation_start)}
+                </div>
+                <div>
+                  <strong>End:</strong> {showDate(item.reservation_end)}
+                </div>
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "12px 14px",
+                  borderRadius: 9,
+                  background: "#f0f5fc",
+                  color: "#334155",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                <strong>Purpose:</strong> {item.purpose}
+              </div>
+
+              {item.status === "approved" && (
+                <div style={{ marginTop: 14 }}>
+                  <button
+                    type="button"
+                    style={{
+                      ...buttonStyle,
+                      color: "white",
+                      background: "#2563eb",
+                      borderColor: "#2563eb",
+                    }}
+                    disabled={busyId !== null || loading}
+                    onClick={() => {
+                      issuingId === item.id
+                        ? setIssuingId(null)
+                        : openIssue(item.id);
+                    }}
+                  >
+                    {issuingId === item.id
+                      ? "Cancel handover"
+                      : "Issue Equipment"}
+                  </button>
+                  {issuingId === item.id && (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: 16,
+                        borderRadius: 10,
+                        border: "1px solid #bfdbfe",
+                        background: "#eff6ff",
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 13,
+                          lineHeight: 1.6,
+                          color: "#1e3a8a",
+                        }}
+                      >
+                        Confirm only after physically handing all{" "}
+                        {item.quantity} unit(s) to the borrower. This will mark
+                        the units as <strong>Issued</strong> in PostgreSQL.
+                      </p>
+                      <button
+                        type="button"
+                        style={{
+                          ...buttonStyle,
+                          justifySelf: "start",
+                          color: "white",
+                          background: "#2563eb",
+                          borderColor: "#2563eb",
+                        }}
+                        disabled={busyId !== null}
+                        onClick={() => issueEquipment(item)}
+                      >
+                        {busyId === item.id
+                          ? "Recording issuance…"
+                          : "Confirm Equipment Handover"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {item.status === "issued" && (
+                <div style={{ marginTop: 14 }}>
+                  <button
+                    type="button"
+                    style={{
+                      ...buttonStyle,
+                      color: "white",
+                      background: "#2563eb",
+                      borderColor: "#2563eb",
+                    }}
+                    disabled={busyId !== null || loading}
+                    onClick={() => {
+                      returningId === item.id
+                        ? setReturningId(null)
+                        : openReturn(item.id);
+                    }}
+                  >
+                    {returningId === item.id
+                      ? "Cancel return"
+                      : "Record Return"}
+                  </button>
+                  {returningId === item.id && (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: 16,
+                        borderRadius: 10,
+                        border: "1px solid #bfdbfe",
+                        background: "#eff6ff",
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      <label
+                        style={labelControl}
+                        htmlFor={`lg-condition-${item.id}`}
+                      >
+                        Condition of all returned units
+                        <select
+                          id={`lg-condition-${item.id}`}
+                          style={formControl}
+                          value={condition}
+                          disabled={busyId !== null}
+                          onChange={(event) => {
+                            setCondition(event.target.value);
+                            setNotice(null);
+                          }}
+                        >
+                          <option value="good">
+                            Good — return to available inventory
+                          </option>
+                          <option value="damaged">
+                            Damaged — mark all units damaged
+                          </option>
+                        </select>
+                      </label>
+                      <label
+                        style={labelControl}
+                        htmlFor={`lg-notes-${item.id}`}
+                      >
+                        {condition === "damaged"
+                          ? "Damage description (required)"
+                          : "Return notes (optional)"}
+                        <textarea
+                          id={`lg-notes-${item.id}`}
+                          style={{
+                            ...formControl,
+                            minHeight: 85,
+                            resize: "vertical",
+                          }}
+                          value={remarks}
+                          maxLength={1000}
+                          disabled={busyId !== null}
+                          placeholder={
+                            condition === "damaged"
+                              ? "Describe the damage (at least 5 characters)"
+                              : "Optional notes about the equipment return"
+                          }
+                          onChange={(event) => {
+                            setRemarks(event.target.value);
+                            setNotice(null);
+                          }}
+                        />
+                      </label>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 12,
+                          color: "#475569",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        This records a return for all {item.quantity} unit(s)
+                        assigned to this reservation.
+                      </p>
+                      <button
+                        type="button"
+                        style={{
+                          ...buttonStyle,
+                          justifySelf: "start",
+                          background: "#2563eb",
+                          borderColor: "#2563eb",
+                          color: "white",
+                        }}
+                        disabled={
+                          busyId !== null ||
+                          (condition === "damaged" && remarks.trim().length < 5)
+                        }
+                        onClick={() => recordReturn(item)}
+                      >
+                        {busyId === item.id
+                          ? "Recording return…"
+                          : "Confirm Equipment Return"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+      {!loading && !loadError && pages > 1 && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            marginTop: 20,
+          }}
+        >
+          <button
+            type="button"
+            style={buttonStyle}
+            disabled={page <= 1 || busyId !== null}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            Previous
+          </button>
+          <span style={{ color: "#64748b", fontSize: 13 }}>
+            Page {page} of {pages}
+          </span>
+          <button
+            type="button"
+            style={buttonStyle}
+            disabled={page >= pages || busyId !== null}
+            onClick={() => setPage((value) => Math.min(pages, value + 1))}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// File 112: technician queue and decisions use the existing File 76 FastAPI routes.
+// Authorization, CSRF, inventory allocations, and audit logs remain server-side.
+function TechnicianReservationWorkspace({ account, onSessionExpired }) {
+  const [requests, setRequests] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [rejectionId, setRejectionId] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [reload, setReload] = useState(0);
+  const [activeRefresh, setActiveRefresh] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    setLoadingError("");
+    reservationApi(`/api/reservations/pending?page=${page}&page_size=10`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!active) return;
+        if (
+          !Array.isArray(result?.items) ||
+          !Number.isInteger(result?.total) ||
+          !Number.isInteger(result?.pages)
+        ) {
+          throw new Error(
+            "LabGear returned an unexpected pending reservations response.",
+          );
+        }
+        setRequests(result.items);
+        setTotal(result.total);
+        setPages(result.pages);
+        if (page > 1 && result.pages > 0 && page > result.pages) {
+          setPage(result.pages);
+        }
+      })
+      .catch((error) => {
+        if (!active || error?.name === "AbortError") return;
+        setLoadingError(
+          error?.message || "Could not load pending reservations.",
+        );
+        if (error?.status === 401) onSessionExpired();
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [page, reload, onSessionExpired]);
+
+  function beginRejection(id) {
+    if (busyId !== null) return;
+    setRejectionId(id);
+    setRejectionReason("");
+    setNotice(null);
+  }
+
+  async function decide(item, decision) {
+    if (busyId !== null) return;
+    const remarks = decision === "rejected" ? rejectionReason.trim() : null;
+    if (
+      decision === "rejected" &&
+      (remarks.length < 5 || remarks.length > 1000)
+    ) {
+      setNotice({
+        type: "error",
+        message: "Enter a rejection reason containing 5–1000 characters.",
+      });
+      return;
+    }
+
+    setBusyId(item.id);
+    setNotice(null);
+    try {
+      const result = await reservationApi(
+        `/api/reservations/${encodeURIComponent(item.id)}/decision`,
+        { method: "POST", body: { decision, remarks } },
+      );
+      if (result?.reservation_id !== item.id || result?.status !== decision) {
+        throw new Error(
+          "FastAPI did not confirm this decision. Refresh the queue before retrying.",
+        );
+      }
+
+      const allocated = Array.isArray(result.allocated_units)
+        ? result.allocated_units.map((unit) => unit.asset_tag).filter(Boolean)
+        : [];
+      setNotice({
+        type: "success",
+        message:
+          decision === "approved"
+            ? `Approved ${result.reservation_code}. ${allocated.length} unit(s) allocated${allocated.length ? `: ${allocated.join(", ")}` : ""}.`
+            : `Rejected ${result.reservation_code}. The rejection reason has been recorded.`,
+      });
+      setRejectionId(null);
+      setRejectionReason("");
+      if (decision === "approved") setActiveRefresh((value) => value + 1);
+
+      // Reload from PostgreSQL after a decision instead of inventing local status.
+      if (requests.length === 1 && page > 1) setPage((value) => value - 1);
+      else setReload((value) => value + 1);
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message:
+          error?.message || "The reservation decision could not be saved.",
+      });
+      if (error?.status === 401) onSessionExpired();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const showDate = (value) => {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString();
+  };
+
+  return (
+    <main style={{ ...boxStyle, minHeight: "calc(100vh - 75px)" }}>
+      <div
+        style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 20 }}
+      >
+        <div>
+          <div
+            style={{
+              color: "#245ff2",
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: 1,
+            }}
+          >
+            LABGEAR · LABORATORY TECHNICIAN WORKSPACE
+          </div>
+          <h1 style={{ margin: "8px 0", fontSize: "clamp(26px, 4vw, 36px)" }}>
+            Reservation Approvals
+          </h1>
+          <p style={{ color: "#60748e", lineHeight: 1.6, margin: 0 }}>
+            Welcome, {account.username}. Review student and instructor requests,
+            then approve or reject them. Approved requests allocate equipment
+            units.
+          </p>
+        </div>
+
+        <section
+          style={reservationPanel}
+          aria-label="Pending reservation requests"
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 14,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: 18,
+            }}
+          >
+            <div>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>
+                Pending Reservations
+              </h2>
+              <span style={{ color: "#60748e", fontSize: 13 }}>
+                {loading
+                  ? "Loading pending requests…"
+                  : `${total} pending request${total === 1 ? "" : "s"}`}
+              </span>
+            </div>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={loading || busyId !== null}
+              onClick={() => {
+                setReload((value) => value + 1);
+                setActiveRefresh((value) => value + 1);
+              }}
+            >
+              {loading ? "Refreshing…" : "Refresh requests"}
+            </button>
+          </div>
+
+          {notice && (
+            <div
+              role={notice.type === "error" ? "alert" : "status"}
+              style={{
+                padding: 14,
+                borderRadius: 10,
+                marginBottom: 16,
+                background: notice.type === "error" ? "#fff1f2" : "#ecfdf5",
+                color: notice.type === "error" ? "#9f1239" : "#166534",
+                border: `1px solid ${notice.type === "error" ? "#fecdd3" : "#a7f3d0"}`,
+              }}
+            >
+              {notice.message}
+            </div>
+          )}
+
+          {loadingError && (
+            <div
+              role="alert"
+              style={{
+                padding: 14,
+                borderRadius: 10,
+                marginBottom: 16,
+                background: "#fff1f2",
+                color: "#9f1239",
+              }}
+            >
+              {loadingError}
+            </div>
+          )}
+
+          {loading ? (
+            <p style={{ color: "#64748b" }}>
+              Retrieving pending requests from FastAPI…
+            </p>
+          ) : loadingError ? (
+            <button
+              type="button"
+              style={buttonStyle}
+              onClick={() => setReload((value) => value + 1)}
+            >
+              Retry loading requests
+            </button>
+          ) : requests.length === 0 ? (
+            <div
+              style={{
+                padding: "34px 12px",
+                textAlign: "center",
+                color: "#60748e",
+                background: "#f8fbff",
+                borderRadius: 12,
+              }}
+            >
+              No pending requests on this page.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 14 }}>
+              {requests.map((item) => (
+                <article
+                  key={item.id}
+                  style={{
+                    padding: "18px 20px",
+                    border: "1px solid #dbe4f2",
+                    borderRadius: 12,
+                    background: "#fbfdff",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 10,
+                      alignItems: "center",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: 16, color: "#142d4e" }}>
+                        {item.equipment_name}
+                      </strong>
+                      <div
+                        style={{ fontSize: 12, color: "#60748e", marginTop: 4 }}
+                      >
+                        {item.reservation_code} · {item.equipment_code}
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        background: "#fef3c7",
+                        color: "#92400e",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Pending
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
+                      gap: 13,
+                      fontSize: 13,
+                      color: "#344763",
+                    }}
+                  >
+                    <div>
+                      <strong>Requested by:</strong>{" "}
+                      {item.requester_name || item.requester_username || "—"}
+                      {item.requester_username && (
+                        <div style={{ color: "#64748b" }}>
+                          @{item.requester_username}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <strong>Quantity:</strong> {item.quantity}
+                      <div style={{ color: "#64748b" }}>
+                        Department: {item.requester_department || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <strong>Start:</strong> {showDate(item.reservation_start)}
+                    </div>
+                    <div>
+                      <strong>End:</strong> {showDate(item.reservation_end)}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "12px 14px",
+                      borderRadius: 9,
+                      background: "#f0f5fc",
+                      color: "#334155",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    <strong>Purpose:</strong> {item.purpose}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginTop: 14,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => decide(item, "approved")}
+                      disabled={busyId !== null}
+                      style={{
+                        ...buttonStyle,
+                        color: "white",
+                        background: "#2563eb",
+                        borderColor: "#2563eb",
+                        opacity: busyId !== null ? 0.65 : 1,
+                      }}
+                    >
+                      {busyId === item.id ? "Saving decision…" : "Approve"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        rejectionId === item.id
+                          ? (setRejectionId(null), setRejectionReason(""))
+                          : beginRejection(item.id)
+                      }
+                      disabled={busyId !== null}
+                      style={{
+                        ...buttonStyle,
+                        color: "#b91c1c",
+                        borderColor: "#fecaca",
+                      }}
+                    >
+                      {rejectionId === item.id ? "Cancel rejection" : "Reject"}
+                    </button>
+                  </div>
+                  {rejectionId === item.id && (
+                    <div style={{ marginTop: 15, display: "grid", gap: 10 }}>
+                      <label
+                        htmlFor={`rejection-reason-${item.id}`}
+                        style={labelControl}
+                      >
+                        Rejection reason (required, minimum 5 characters)
+                        <textarea
+                          id={`rejection-reason-${item.id}`}
+                          style={{
+                            ...formControl,
+                            minHeight: 88,
+                            resize: "vertical",
+                          }}
+                          value={rejectionReason}
+                          maxLength={1000}
+                          placeholder="Explain why this reservation cannot be approved"
+                          onChange={(event) => {
+                            setRejectionReason(event.target.value);
+                            setNotice(null);
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => decide(item, "rejected")}
+                        disabled={
+                          busyId !== null || rejectionReason.trim().length < 5
+                        }
+                        style={{
+                          ...buttonStyle,
+                          justifySelf: "start",
+                          color: "white",
+                          background: "#b91c1c",
+                          borderColor: "#b91c1c",
+                        }}
+                      >
+                        Confirm Rejection
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          {!loading && !loadingError && pages > 1 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "center",
+                marginTop: 20,
+              }}
+            >
+              <button
+                type="button"
+                style={buttonStyle}
+                disabled={page <= 1 || busyId !== null}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                Previous
+              </button>
+              <span style={{ color: "#64748b", fontSize: 13 }}>
+                Page {page} of {pages}
+              </span>
+              <button
+                type="button"
+                style={buttonStyle}
+                disabled={page >= pages || busyId !== null}
+                onClick={() => setPage((value) => Math.min(pages, value + 1))}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </section>
+        <TechnicianHandoverPanel
+          refreshToken={activeRefresh}
+          onSessionExpired={onSessionExpired}
+        />
       </div>
     </main>
   );
@@ -972,20 +2087,15 @@ function App() {
     return (
       <>
         {header("Laboratory Technician")}
-        <main style={boxStyle}>
-          <h1 style={{ marginTop: 0 }}>Technician Workspace</h1>
-          <p>Welcome, {account.username}.</p>
-          <p style={{ maxWidth: 660, color: "#64748b", lineHeight: 1.6 }}>
-            Your staff session is verified. Equipment approval, issuance, and
-            return management will be connected in the next backend/frontend
-            steps.
+        {authError && (
+          <p role="alert" style={{ margin: 20, color: "#ae3c35" }}>
+            {authError}
           </p>
-          {authError && (
-            <p role="alert" style={{ color: "#ae3c35" }}>
-              {authError}
-            </p>
-          )}
-        </main>
+        )}
+        <TechnicianReservationWorkspace
+          account={account}
+          onSessionExpired={checkSession}
+        />
       </>
     );
   }
