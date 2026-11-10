@@ -11,9 +11,17 @@ import {
   Search,
   ShieldCheck,
   X,
+  LogOut,
+  Package,
+  Users,
+  Activity,
+  ClipboardList,
 } from "lucide-react";
 
 import LoginPanel from "./auth/LoginPanel";
+import EquipmentCatalog from "./EquipmentCatalog";
+import { DashboardLayout } from "../components/layout/DashboardLayout";
+import { getCurrentUser, logout } from "../services/loginApi";
 import "../styles/auth.css";
 
 import labgearMark from "../assets/labgear-mark.svg";
@@ -69,15 +77,309 @@ const steps = [
   },
 ];
 
+// Reuse the EXACT sidebar/topbar/dashboard components from the existing
+// frontend/src/components/layout/DashboardLayout.jsx and dashboard.css.
+// Do not use the fictional ?preview=dashboard entry point for real accounts.
+// Any other modules are intentionally placeholders until FastAPI data APIs exist.
+const authenticatedNavigation = {
+  student: ["dashboard", "equipment", "reservations", "borrowed", "profile"],
+  instructor: ["dashboard", "equipment", "reservations", "borrowed", "profile"],
+  technician: [
+    "dashboard",
+    "inventory",
+    "approvals",
+    "issuance",
+    "returns",
+    "damage",
+  ],
+  admin: ["dashboard", "users", "security", "logs", "settings"],
+};
+
+const statsByRole = {
+  student: [
+    { label: "Available Equipment", icon: Package },
+    { label: "My Reservations", icon: CalendarDays },
+    { label: "Borrowed Items", icon: PackageCheck },
+  ],
+  instructor: [
+    { label: "Available Equipment", icon: Package },
+    { label: "My Reservations", icon: CalendarDays },
+    { label: "Borrowed Items", icon: PackageCheck },
+  ],
+  technician: [
+    { label: "Equipment Units", icon: Package },
+    { label: "Pending Approvals", icon: ClipboardList },
+    { label: "Issued Equipment", icon: PackageCheck },
+  ],
+  admin: [
+    { label: "Registered Users", icon: Users },
+    { label: "Security Events", icon: Activity },
+    { label: "System Modules", icon: ShieldCheck },
+  ],
+};
+
+const moduleNames = {
+  equipment: "Equipment",
+  reservations: "My Reservations",
+  borrowed: "Borrowed Items",
+  profile: "Profile",
+  inventory: "Inventory",
+  approvals: "Approvals",
+  issuance: "Issuance",
+  returns: "Returns",
+  damage: "Damage Reports",
+  users: "User Management",
+  security: "Security Monitoring",
+  logs: "Activity Logs",
+  settings: "Settings",
+};
+
+const dashboardRoleNames = {
+  student: "Student",
+  instructor: "Instructor",
+  technician: "Laboratory Technician",
+  admin: "Administrator",
+};
+
+function AuthenticatedDashboard({ user, onSignOut, signingOut, error }) {
+  const [activePage, setActivePage] = useState("dashboard");
+  // The API returns a trusted role. Normalize its DB name to the original
+  // dashboard's "technician" navigation key, without offering role switching.
+  const role =
+    user.role === "lab_technician" || user.role === "laboratory_technician"
+      ? "technician"
+      : user.role;
+  const supported = Object.prototype.hasOwnProperty.call(
+    authenticatedNavigation,
+    role,
+  );
+
+  if (!supported) {
+    return (
+      <main style={{ padding: 40 }} role="alert">
+        Your account role is not supported by this workspace.
+        <button type="button" onClick={onSignOut} disabled={signingOut}>
+          Sign out
+        </button>
+      </main>
+    );
+  }
+
+  const isDashboard = activePage === "dashboard";
+  const activeName = moduleNames[activePage] || "Dashboard";
+
+  return (
+    <div className="labgear-authenticated-workspace">
+      <style>{`
+        /* Scoped to authenticated mode. The developer preview stays unchanged. */
+        .labgear-authenticated-workspace .lgdash-topbar-right > a,
+        .labgear-authenticated-workspace .lgdash-preview-notice,
+        .labgear-authenticated-workspace .lgdash-home-link { display: none; }
+        .labgear-authenticated-workspace .lgdash-live-signout { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+        .labgear-authenticated-workspace .lgdash-live-signout:disabled { opacity: .6; cursor: wait; }
+        .labgear-authenticated-workspace .lgdash-live-error { color: #af2934; margin: 10px 0 18px; }
+      `}</style>
+      <DashboardLayout
+        role={role}
+        activePage={activePage}
+        onNavigate={(page) => {
+          if (authenticatedNavigation[role].includes(page)) setActivePage(page);
+        }}
+      >
+        <div className="lgdash-welcome">
+          <div>
+            <span className="lgdash-eyebrow">
+              {dashboardRoleNames[role]} Workspace
+            </span>
+            <h1>{isDashboard ? "Welcome to LabGear" : activeName}</h1>
+            <p>
+              {isDashboard
+                ? `Signed in as ${user.username}. Manage laboratory equipment and reservations from one organized workspace.`
+                : activePage === "equipment"
+                  ? "Browse the current equipment catalog from PostgreSQL. Reservation requests will be connected in a later step."
+                  : `${activeName} is not connected to live FastAPI data yet.`}
+            </p>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <span className="lgdash-demo-pill">VERIFIED ACCOUNT</span>
+            <button
+              type="button"
+              className="lgdash-outline-btn lgdash-live-signout"
+              onClick={onSignOut}
+              disabled={signingOut}
+            >
+              <LogOut size={16} />
+              {signingOut ? "Signing out..." : "Sign out"}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <p className="lgdash-live-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {isDashboard ? (
+          <>
+            {/* Preserve the original three-card dashboard geometry, but do not
+                present preview counts as real database statistics. */}
+            <div className="lgdash-stats">
+              {statsByRole[role].map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <div className="lgdash-stat-card" key={stat.label}>
+                    <div className="lgdash-stat-icon">
+                      <Icon size={21} />
+                    </div>
+                    <span>{stat.label}</span>
+                    <strong>—</strong>
+                    <small>Live data coming after API integration</small>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="lgdash-section-header">
+              <div>
+                <h2>Equipment Preview</h2>
+                <p>Common laboratory equipment in LabGear.</p>
+              </div>
+              <button
+                className="lgdash-outline-btn"
+                onClick={() =>
+                  setActivePage(
+                    role === "admin"
+                      ? "users"
+                      : role === "technician"
+                        ? "inventory"
+                        : "equipment",
+                  )
+                }
+              >
+                Explore Workspace <ArrowRight size={16} />
+              </button>
+            </div>
+
+            <div className="lgdash-equipment-grid">
+              {equipmentItems.map((item) => (
+                <div className="lgdash-equipment-card" key={item.name}>
+                  <div className="lgdash-equipment-image">
+                    <img src={item.image} alt={item.name} />
+                  </div>
+                  <div className="lgdash-equipment-info">
+                    <small>{item.category}</small>
+                    <h3>{item.name}</h3>
+                    <span className="lgdash-status-demo">Preview Item</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="lgdash-info-card">
+              <div className="lgdash-info-icon">
+                <ClipboardCheck size={23} />
+              </div>
+              <div>
+                <h3>Reservation Management</h3>
+                <p>
+                  Equipment availability, reservation approvals, borrowing
+                  records, and return inspections will appear here after backend
+                  integration.
+                </p>
+              </div>
+            </div>
+          </>
+        ) : activePage === "equipment" &&
+          (role === "student" || role === "instructor") ? (
+          <EquipmentCatalog role={role} />
+        ) : (
+          <div className="lgdash-empty-screen">
+            <div className="lgdash-empty-icon">
+              <Package size={32} />
+            </div>
+            <h2>{activeName}</h2>
+            <p>
+              This module is still being connected to FastAPI and PostgreSQL. No
+              fictional preview records are displayed as your real records.
+            </p>
+            <button
+              className="lgdash-outline-btn"
+              onClick={() => setActivePage("dashboard")}
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        )}
+      </DashboardLayout>
+    </div>
+  );
+}
+
 function LandingPage({ apiStatus }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState(null);
+  const [sessionChecking, setSessionChecking] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
+  const [dashboardError, setDashboardError] = useState("");
+
+  // Only FastAPI may establish authentication. Frontend state is a display
+  // of /api/auth/me, never a replacement for the HttpOnly session cookie.
+  useEffect(() => {
+    let mounted = true;
+    getCurrentUser()
+      .then((user) => {
+        if (mounted) setAuthenticatedUser(user);
+      })
+      .catch(() => {
+        if (mounted) setAuthenticatedUser(null);
+      })
+      .finally(() => {
+        if (mounted) setSessionChecking(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function handleLoginSuccess(user) {
+    // Called only after LoginPanel completes OTP and confirms /api/auth/me.
+    setAuthenticatedUser(user);
+    setAuthModal(null);
+    setMenuOpen(false);
+    setSessionChecking(false);
+    setDashboardError("");
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  async function handleDashboardSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setDashboardError("");
+    try {
+      await logout();
+      setAuthenticatedUser(null);
+      setAuthModal(null);
+      window.scrollTo({ top: 0, behavior: "auto" });
+    } catch (error) {
+      setDashboardError(
+        error?.message || "Could not sign out. Please try again.",
+      );
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   useEffect(() => {
     if (!authModal) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
     function handleEscape(event) {
       if (event.key === "Escape") {
@@ -88,7 +390,6 @@ function LandingPage({ apiStatus }) {
     window.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleEscape);
     };
   }, [authModal]);
@@ -98,9 +399,30 @@ function LandingPage({ apiStatus }) {
     setAuthModal(type);
   }
 
+  if (sessionChecking) {
+    return (
+      <div
+        className="landing-page"
+        style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}
+      >
+        <p role="status">Checking your LabGear session...</p>
+      </div>
+    );
+  }
+
+  if (authenticatedUser) {
+    return (
+      <AuthenticatedDashboard
+        user={authenticatedUser}
+        onSignOut={handleDashboardSignOut}
+        signingOut={signingOut}
+        error={dashboardError}
+      />
+    );
+  }
+
   return (
     <div className="landing-page">
-      <style>{compactAuthModalStyles}</style>
       <div className="landing-prospect-name">
         LabGear — School Laboratory Equipment Reservation System
       </div>
@@ -381,6 +703,15 @@ function LandingPage({ apiStatus }) {
       {authModal && (
         <div
           className="landing-modal-overlay"
+          style={{
+            // Keep dialogs inside the viewport instead of centering an
+            // oversized form above the top edge of the screen.
+            alignItems: "flex-start",
+            justifyContent: "center",
+            overflowY: "auto",
+            padding: "clamp(12px, 3vh, 28px) 16px",
+            boxSizing: "border-box",
+          }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setAuthModal(null);
@@ -390,17 +721,25 @@ function LandingPage({ apiStatus }) {
           <div
             className={
               authModal === "register"
-                ? "landing-modal landing-modal-register landing-modal-compact-register"
-                : authModal === "login"
-                  ? "landing-modal landing-modal-compact-login"
-                  : "landing-modal landing-modal-compact-security"
+                ? "landing-modal landing-modal-register"
+                : "landing-modal"
             }
             role="dialog"
             aria-modal="true"
             aria-labelledby="landing-modal-title"
+            style={{
+              // Preserve existing CSS-based colors, widths, typography,
+              // fields and layout; only constrain vertical scrolling.
+              position: "relative",
+              boxSizing: "border-box",
+              maxWidth: "100%",
+              maxHeight: "calc(100dvh - 48px)",
+              overflowY: "auto",
+              flexShrink: 0,
+              margin: "0 auto",
+            }}
           >
             <button
-              type="button"
               className="landing-modal-close"
               onClick={() => setAuthModal(null)}
               aria-label="Close dialog"
@@ -411,185 +750,21 @@ function LandingPage({ apiStatus }) {
             {authModal === "login" ? (
               <LoginPanel
                 onForgotPassword={() => setAuthModal("recovery")}
-                onPreviewLoginOtp={
-                  import.meta.env.DEV
-                    ? () => setAuthModal("login-otp")
-                    : undefined
-                }
+                onLoginSuccess={handleLoginSuccess}
               />
             ) : authModal === "register" ? (
-              <RegisterPanel
-                onPreviewEmailOtp={
-                  import.meta.env.DEV
-                    ? () => setAuthModal("registration-otp")
-                    : undefined
-                }
-              />
+              <RegisterPanel />
             ) : (
               <AuthSecurityPanel
                 mode={authModal}
                 onBackToLogin={() => setAuthModal("login")}
               />
             )}
-
           </div>
         </div>
       )}
     </div>
   );
 }
-
-
-// Compact authentication layout scoped to the landing page.
-// Keeps the existing landing.css and frontend authentication components intact.
-const compactAuthModalStyles = `
-.landing-page .landing-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px;
-  overflow: hidden;
-}
-
-.landing-page .landing-modal-overlay .landing-modal {
-  box-sizing: border-box;
-  width: min(450px, calc(100vw - 24px));
-  max-width: none;
-  max-height: calc(100dvh - 24px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 25px 28px;
-  border-radius: 16px;
-  scrollbar-width: thin;
-}
-
-.landing-page .landing-modal-overlay .landing-modal-compact-register {
-  width: min(760px, calc(100vw - 24px));
-  padding: 22px 27px;
-}
-
-.landing-page .landing-modal .lg-auth-heading {
-  margin-bottom: 18px;
-}
-
-.landing-page .landing-modal .lg-auth-heading h2 {
-  font-size: 23px;
-  margin-bottom: 5px;
-}
-
-.landing-page .landing-modal .lg-auth-panel .lg-form-group {
-  margin-bottom: 13px;
-}
-
-.landing-page .landing-modal .lg-auth-panel .lg-label {
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.landing-page .landing-modal .lg-auth-panel .lg-input {
-  min-height: 43px;
-  font-size: 13px;
-}
-
-.landing-page .landing-modal .lg-auth-forgot {
-  margin: 0 0 13px;
-}
-
-.landing-page .landing-modal .lg-auth-captcha {
-  min-height: 0;
-  padding: 12px;
-  margin-bottom: 14px;
-  gap: 10px;
-}
-
-.landing-page .landing-modal .lg-auth-captcha p {
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.landing-page .landing-modal .lg-auth-submit {
-  min-height: 43px;
-}
-
-.landing-page .landing-modal .lg-auth-dev-note {
-  font-size: 11px;
-  line-height: 1.55;
-  margin-top: 10px;
-}
-
-.landing-page .landing-modal .lg-auth-preview-link {
-  margin: 10px auto 0;
-  font-size: 11px;
-  padding: 5px;
-}
-
-.landing-page .landing-modal .lg-register-heading {
-  margin-bottom: 15px;
-}
-
-.landing-page .landing-modal .lg-register-heading-icon {
-  width: 44px;
-  height: 44px;
-  margin-bottom: 9px;
-}
-
-.landing-page .landing-modal .lg-register-heading h2 {
-  font-size: 22px;
-}
-
-.landing-page .landing-modal .lg-register-progress {
-  margin: 16px 0 19px;
-}
-
-.landing-page .landing-modal .lg-register-section {
-  padding: 16px;
-  margin-bottom: 14px;
-}
-
-.landing-page .landing-modal .lg-register-section h3 {
-  font-size: 14px;
-  padding-bottom: 10px;
-  margin-bottom: 13px;
-}
-
-.landing-page .landing-modal .lg-register-grid {
-  gap: 8px 16px;
-}
-
-.landing-page .landing-modal .lg-register-field {
-  gap: 5px;
-  margin-bottom: 5px;
-}
-
-.landing-page .landing-modal .lg-register-field .lg-input {
-  min-height: 41px;
-  font-size: 12px;
-}
-
-.landing-page .landing-modal .lgas-header {
-  margin-bottom: 13px;
-}
-
-.landing-page .landing-modal .lgas-content {
-  gap: 11px;
-  margin-top: 14px;
-}
-
-@media (max-width: 600px) {
-  .landing-page .landing-modal-overlay .landing-modal {
-    width: calc(100vw - 20px);
-    max-height: calc(100dvh - 20px);
-    padding: 20px 16px;
-  }
-
-  .landing-page .landing-modal .lg-register-grid {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-}
-`;
 
 export default LandingPage;

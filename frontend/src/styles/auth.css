@@ -66,8 +66,7 @@
   margin: -4px 0 20px;
 }
 
-/* Visual placeholder only, not a working CAPTCHA */
-
+/* Shared security information panel (also used on the login OTP screen). */
 .lg-auth-captcha {
   display: flex;
   align-items: flex-start;
@@ -94,6 +93,65 @@
   color: #64748b;
   line-height: 1.6;
   font-size: 12px;
+}
+
+/* Login CAPTCHA: put the actual Google checkbox below the heading, centered.
+   This selector matches the credentials panel's nested reCAPTCHA component,
+   but not the informational box shown on the OTP verification step. */
+.lg-auth-panel .lg-auth-captcha:has(> div > div) {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 9px;
+  align-items: start;
+}
+
+.lg-auth-panel .lg-auth-captcha:has(> div > div) > svg {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/* Let the nested header/text/checkbox participate in the grid directly. */
+.lg-auth-panel .lg-auth-captcha:has(> div > div) > div {
+  display: contents;
+}
+
+.lg-auth-panel .lg-auth-captcha:has(> div > div) > div > strong {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+}
+
+.lg-auth-panel .lg-auth-captcha:has(> div > div) > div > p {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0 0 4px;
+  text-align: left;
+}
+
+.lg-auth-panel .lg-auth-captcha:has(> div > div) > div > div {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  justify-self: center;
+  width: 304px;
+  max-width: none;
+}
+
+/* Google's standard v2 widget occupies 304 x 78 CSS pixels.
+   Scale only on narrow screens so the whole checkbox stays inside the card. */
+@media (max-width: 400px) {
+  .lg-auth-panel .lg-auth-captcha:has(> div > div) > div > div {
+    transform: scale(0.75);
+    transform-origin: top center;
+    margin-bottom: -19px;
+  }
+}
+
+@media (max-width: 340px) {
+  .lg-auth-panel .lg-auth-captcha:has(> div > div) > div > div {
+    transform: scale(0.68);
+    margin-bottom: -25px;
+  }
 }
 
 .lg-auth-submit {

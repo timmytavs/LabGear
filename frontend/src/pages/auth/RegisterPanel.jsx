@@ -1,4 +1,11 @@
-import { useState } from "react";
+/**
+ * LabGear Frontend File 59 fix — React registration + reliable reCAPTCHA loading.
+ * Destination: frontend/src/pages/auth/RegisterPanel.jsx (REPLACE).
+ * Preserves the three-step design from the uploaded component.
+ * Requires File 58: src/services/registrationApi.js.
+ * Real reCAPTCHA v2 needs VITE_LABGEAR_RECAPTCHA_SITE_KEY in frontend/.env.local.
+ */
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,6 +20,210 @@ import {
 
 import "../../styles/register.css";
 import PrivacyNotice from "./PrivacyNotice";
+import {
+  registerAccount,
+  resendRegistrationOtp,
+  verifyRegistrationOtp,
+} from "../../services/registrationApi";
+
+// This is Google's PUBLIC site key, never the server-side secret key.
+// Add VITE_LABGEAR_RECAPTCHA_SITE_KEY to frontend/.env.local and restart Vite.
+const RECAPTCHA_SITE_KEY =
+  import.meta.env.VITE_LABGEAR_RECAPTCHA_SITE_KEY?.trim() || "";
+
+// Use Google's documented explicit-render callback. A <script> onload event
+// alone is NOT proof that grecaptcha.render() is ready to be called.
+const RECAPTCHA_SCRIPT_HOSTS = [
+  "https://www.google.com/recaptcha/api.js",
+  "https://www.recaptcha.net/recaptcha/api.js",
+];
+let captchaScriptPromise;
+let captchaCallbackNumber = 0;
+
+function recaptchaIsReady() {
+  return typeof window.grecaptcha?.render === "function";
+}
+
+function loadFromCaptchaHost(url) {
+  return new Promise((resolve, reject) => {
+    if (recaptchaIsReady()) {
+      resolve(window.grecaptcha);
+      return;
+    }
+
+    const callbackName = `__labgearCaptchaReady_${++captchaCallbackNumber}`;
+    const script = document.createElement("script");
+    let finished = false;
+    let timeoutId;
+
+    function finish(error) {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeoutId);
+      delete window[callbackName];
+      script.onerror = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else {
+        resolve(window.grecaptcha);
+      }
+    }
+
+    // Google invokes this only AFTER its v2 dependencies are initialized.
+    window[callbackName] = () => {
+      if (recaptchaIsReady()) {
+        finish();
+      } else {
+        finish(new Error("reCAPTCHA API initialized without a render function."));
+      }
+    };
+
+    script.src = `${url}?onload=${callbackName}&render=explicit`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.labgearRecaptcha = "true";
+    script.onerror = () => {
+      finish(new Error(`Could not download reCAPTCHA from ${new URL(url).hostname}.`));
+    };
+    timeoutId = window.setTimeout(() => {
+      if (recaptchaIsReady()) {
+        finish();
+      } else {
+        finish(new Error(`reCAPTCHA initialization timed out at ${new URL(url).hostname}.`));
+      }
+    }, 12000);
+
+    document.head.appendChild(script);
+  });
+}
+
+function loadRecaptchaScript() {
+  if (recaptchaIsReady()) return Promise.resolve(window.grecaptcha);
+  if (!captchaScriptPromise) {
+    captchaScriptPromise = (async () => {
+      for (const url of RECAPTCHA_SCRIPT_HOSTS) {
+        try {
+          return await loadFromCaptchaHost(url);
+        } catch {
+          // Google recommends recaptcha.net if google.com is unavailable.
+          if (recaptchaIsReady()) return window.grecaptcha;
+        }
+      }
+      throw new Error(
+        "Google reCAPTCHA could not load. Check your internet connection, " +
+        "browser extensions, and DevTools Console/Network for blocked requests.",
+      );
+    })().catch((error) => {
+      captchaScriptPromise = undefined; // A Retry can start a fresh request.
+      throw error;
+    });
+  }
+  return captchaScriptPromise;
+}
+
+function RecaptchaCheckbox({ onToken, resetSequence }) {
+  const containerRef = useRef(null);
+  const widgetIdRef = useRef(null);
+  const onTokenRef = useRef(onToken);
+  const [loadError, setLoadError] = useState("");
+  const [retryNumber, setRetryNumber] = useState(0);
+  onTokenRef.current = onToken;
+
+  useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY) return undefined;
+    let mounted = true;
+    setLoadError("");
+
+    loadRecaptchaScript()
+      .then((recaptcha) => {
+        if (!mounted || !containerRef.current || widgetIdRef.current !== null) {
+          return;
+        }
+        try {
+          widgetIdRef.current = recaptcha.render(containerRef.current, {
+            sitekey: RECAPTCHA_SITE_KEY,
+            callback: (token) => onTokenRef.current(token),
+            "expired-callback": () => onTokenRef.current(""),
+            "error-callback": () => {
+              onTokenRef.current("");
+              if (mounted) {
+                setLoadError(
+                  "CAPTCHA challenge failed to connect. Check your connection " +
+                  "and retry the checkbox.",
+                );
+              }
+            },
+          });
+        } catch {
+          if (mounted) {
+            setLoadError(
+              "The CAPTCHA widget could not render. Check that your public " +
+              "site key is for reCAPTCHA v2 Checkbox and allows localhost.",
+            );
+          }
+        }
+      })
+      .catch((error) => {
+        if (mounted) setLoadError(error.message);
+      });
+
+    return () => {
+      mounted = false;
+      // The CAPTCHA iframe belongs to Google and is removed with the node.
+    };
+  }, [retryNumber]);
+
+  useEffect(() => {
+    if (resetSequence > 0 && widgetIdRef.current !== null) {
+      try {
+        window.grecaptcha?.reset(widgetIdRef.current);
+      } catch {
+        // If Google destroyed the iframe, it will reload next mount.
+      }
+      onTokenRef.current("");
+    }
+  }, [resetSequence]);
+
+  if (!RECAPTCHA_SITE_KEY) {
+    return (
+      <p className="lg-register-error" role="alert">
+        CAPTCHA site key is not configured. Set VITE_LABGEAR_RECAPTCHA_SITE_KEY
+        in frontend/.env.local and restart the React server.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <div ref={containerRef} aria-label="Google reCAPTCHA checkbox" />
+      {loadError && (
+        <div>
+          <p className="lg-register-error" role="alert">{loadError}</p>
+          <button
+            type="button"
+            className="lg-button lg-button-secondary"
+            onClick={() => {
+              setLoadError("");
+              onTokenRef.current("");
+              if (widgetIdRef.current !== null && recaptchaIsReady()) {
+                try {
+                  window.grecaptcha.reset(widgetIdRef.current);
+                } catch {
+                  setRetryNumber((value) => value + 1);
+                }
+              } else {
+                setRetryNumber((value) => value + 1);
+              }
+            }}
+          >
+            Retry CAPTCHA
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const initialData = {
   id_number: "",
@@ -40,6 +251,7 @@ const initialData = {
   answer_q2: "",
   answer_q4: "",
   privacy_consent: false,
+  website: "", // Hidden honeypot: keep empty for genuine registrants.
 };
 
 const departments = [
@@ -137,6 +349,12 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
   const [data, setData] = useState(initialData);
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaResetSequence, setCaptchaResetSequence] = useState(0);
+  const [otpCode, setOtpCode] = useState("");
+  const [busy, setBusy] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusError, setStatusError] = useState(false);
 
   const age = calculateAge(data.birthdate);
   const strength = passwordStrength(data.password);
@@ -153,6 +371,7 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
       ...previous,
       [name]: "",
     }));
+    setStatusMessage("");
   }
 
   function field(name, label, options = {}) {
@@ -172,6 +391,9 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
     const nextErrors = {};
 
     if (step === 1) {
+      if (!/^[0-9]{4}-[0-9]{4}$/.test(data.id_number)) {
+        nextErrors.id_number = "ID number must use the format 0000-0000.";
+      }
       if (data.extension_type === "Other" && !data.name_extension.trim()) {
         nextErrors.name_extension = "Please specify your name extension.";
       }
@@ -231,8 +453,14 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
 
       if (data.password.length < 10 || data.password.length > 64) {
         nextErrors.password = "Password must contain 10–64 characters.";
-      } else if (strength === "Weak") {
-        nextErrors.password = "Weak passwords cannot be submitted.";
+      } else if (
+        !/[a-z]/.test(data.password) ||
+        !/[A-Z]/.test(data.password) ||
+        !/[0-9]/.test(data.password) ||
+        !/[^A-Za-z0-9]/.test(data.password)
+      ) {
+        nextErrors.password =
+          "Include uppercase, lowercase, number, and special character.";
       }
 
       if (data.password !== data.confirm_password) {
@@ -266,8 +494,132 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
   }
 
   function previousStep() {
+    if (busy) return;
     setErrors({});
+    setStatusMessage("");
     setStep((previous) => Math.max(previous - 1, 1));
+  }
+
+  function resetCaptcha() {
+    setCaptchaToken("");
+    setCaptchaResetSequence((count) => count + 1);
+  }
+
+  function clearSecrets() {
+    setData((previous) => ({
+      ...previous,
+      password: "",
+      confirm_password: "",
+      answer_q7: "",
+      answer_q2: "",
+      answer_q4: "",
+    }));
+  }
+
+  function applyApiError(error) {
+    const fieldNames = {
+      security_answer_q7: "answer_q7",
+      security_answer_q2: "answer_q2",
+      security_answer_q4: "answer_q4",
+    };
+    const fieldErrors = {};
+    for (const entry of error.fields || []) {
+      const name = fieldNames[entry.name] || entry.name;
+      fieldErrors[name] = entry.message;
+    }
+    setErrors(fieldErrors);
+    setStatusError(true);
+    setStatusMessage(error.message || "Request failed. Try again.");
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    if (busy) return;
+    if (step < 3) {
+      nextStep();
+      return;
+    }
+    if (!validateStep()) return;
+    if (!RECAPTCHA_SITE_KEY || !captchaToken) {
+      setErrors((previous) => ({
+        ...previous,
+        captcha: "Complete the Google reCAPTCHA checkbox first.",
+      }));
+      return;
+    }
+
+    setBusy("register");
+    setStatusMessage("");
+    try {
+      const result = await registerAccount(data, captchaToken);
+      clearSecrets();
+      setOtpCode("");
+      setStatusMessage(result.message || "Check your email for a verification code.");
+      setStatusError(false);
+      setStep(4);
+    } catch (error) {
+      // The API may have committed a pending account even when Gmail fails.
+      // Route the user to Resend rather than encouraging duplicate registration.
+      if (
+        error.status === 503 &&
+        error.message?.includes("Verification email could not be sent")
+      ) {
+        clearSecrets();
+        setOtpCode("");
+        setStep(4);
+        setStatusError(true);
+        setStatusMessage("Your registration may be pending, but Gmail delivery failed. Use Resend after the cooldown.");
+      } else {
+        applyApiError(error);
+      }
+    } finally {
+      resetCaptcha(); // Google tokens are single-use, even on HTTP failure.
+      setBusy("");
+    }
+  }
+
+  async function handleVerify(event) {
+    event.preventDefault();
+    if (busy) return;
+    if (!/^[0-9]{6}$/.test(otpCode)) {
+      setStatusError(true);
+      setStatusMessage("Enter the six-digit email verification code.");
+      return;
+    }
+    setBusy("verify");
+    setStatusMessage("");
+    try {
+      const result = await verifyRegistrationOtp(data.id_number, otpCode);
+      setOtpCode("");
+      setStatusError(false);
+      setStatusMessage(result.message || "Email verified successfully.");
+      setStep(5);
+    } catch (error) {
+      applyApiError(error);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleResend() {
+    if (busy) return;
+    if (!RECAPTCHA_SITE_KEY || !captchaToken) {
+      setStatusError(true);
+      setStatusMessage("Complete a new CAPTCHA before requesting another code.");
+      return;
+    }
+    setBusy("resend");
+    setStatusMessage("");
+    try {
+      const result = await resendRegistrationOtp(data.id_number, captchaToken);
+      setStatusError(false);
+      setStatusMessage(result.message || "If eligible, a new code has been sent.");
+    } catch (error) {
+      applyApiError(error);
+    } finally {
+      resetCaptcha();
+      setBusy("");
+    }
   }
 
   return (
@@ -278,10 +630,10 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
         </div>
 
         <h2 id="landing-modal-title">Create Your Account</h2>
-        <p>Join LabGear to manage laboratory reservations.</p>
+        <p>{step === 5 ? "Your registration is verified." : "Join LabGear to manage laboratory reservations."}</p>
       </div>
 
-      <div className="lg-register-progress">
+      {step <= 3 && <div className="lg-register-progress">
         {[1, 2, 3].map((number) => (
           <div
             key={number}
@@ -303,9 +655,34 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
             </small>
           </div>
         ))}
-      </div>
+      </div>}
 
-      <form onSubmit={(event) => event.preventDefault()} noValidate>
+      {step <= 3 && <form onSubmit={handleRegister} noValidate>
+        {/* Bot-trap text input: visually hidden, not type=hidden or disabled.
+            File 82 forwards data.website; FastAPI rejects any nonempty value.
+            Do not clear, validate, or announce this field in the browser. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: "-10000px",
+            top: "auto",
+            width: "1px",
+            height: "1px",
+            overflow: "hidden",
+          }}
+        >
+          <label htmlFor="reg-website">Website (leave blank)</label>
+          <input
+            id="reg-website"
+            name="website"
+            type="text"
+            value={data.website}
+            onChange={update}
+            autoComplete="off"
+            tabIndex={-1}
+          />
+        </div>
         {step === 1 && (
           <section className="lg-register-section">
             <h3>
@@ -604,7 +981,27 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
                 <p className="lg-register-error">{errors.privacy_consent}</p>
               )}
             </section>
+
+            <section className="lg-register-section">
+              <h3><ShieldCheck size={20} /> Verify You're Human</h3>
+              <RecaptchaCheckbox
+                onToken={setCaptchaToken}
+                resetSequence={captchaResetSequence}
+              />
+              {errors.captcha && (
+                <p className="lg-register-error" role="alert">{errors.captcha}</p>
+              )}
+            </section>
           </>
+        )}
+
+        {statusMessage && (
+          <p
+            className={statusError ? "lg-register-error" : "lg-register-description"}
+            role={statusError ? "alert" : "status"}
+          >
+            {statusMessage}
+          </p>
         )}
 
         <div className="lg-register-actions">
@@ -613,6 +1010,7 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
               type="button"
               className="lg-button lg-button-secondary"
               onClick={previousStep}
+              disabled={Boolean(busy)}
             >
               <ArrowLeft size={17} /> Back
             </button>
@@ -623,6 +1021,7 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
               type="button"
               className="lg-button lg-button-primary"
               onClick={nextStep}
+              disabled={Boolean(busy)}
             >
               Continue <ArrowRight size={17} />
             </button>
@@ -630,23 +1029,104 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
             <button
               type="submit"
               className="lg-button lg-button-primary"
-              disabled
-              title="Registration backend is not implemented yet"
+              disabled={Boolean(busy) || !RECAPTCHA_SITE_KEY}
             >
-              Create Account
+              {busy === "register" ? "Creating Account..." : "Create Account"}
             </button>
           )}
         </div>
 
         {step === 3 && (
           <p className="lg-register-development-notice">
-            UI preview only. Registration, username availability, CAPTCHA,
-            server-side validation, and email OTP are not connected yet. Use
-            fictional test information only.
+            Registration is connected to the local FastAPI backend. A valid
+            Google reCAPTCHA checkbox and working Gmail configuration are required.
+            Use only fictional accounts while testing.
           </p>
         )}
-      </form>
-      {onPreviewEmailOtp && (
+      </form>}
+
+      {step === 4 && (
+        <div>
+          <section className="lg-register-section">
+            <h3><ShieldCheck size={20} /> Verify Your Email</h3>
+            <p className="lg-register-description">
+              If your registration is eligible, check {data.email || "your email"}
+              for a six-digit verification code. Codes expire after three minutes.
+            </p>
+            <p className="lg-register-description">
+              Registration ID: <strong>{data.id_number}</strong>
+            </p>
+            <form onSubmit={handleVerify} noValidate>
+              <Field
+                label="Email Verification Code"
+                name="otp"
+                value={otpCode}
+                onChange={(event) => {
+                  setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                  setStatusMessage("");
+                }}
+                placeholder="6-digit code"
+                maxLength={6}
+                required
+              />
+              <div className="lg-register-actions">
+                <button
+                  type="submit"
+                  className="lg-button lg-button-primary"
+                  disabled={Boolean(busy) || otpCode.length !== 6}
+                >
+                  {busy === "verify" ? "Verifying..." : "Verify Email"}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="lg-register-section">
+            <h3><ShieldCheck size={20} /> Need Another Code?</h3>
+            <p className="lg-register-description">
+              Wait at least 60 seconds before requesting a replacement code.
+              Complete a fresh CAPTCHA for each request.
+            </p>
+            <RecaptchaCheckbox
+              onToken={setCaptchaToken}
+              resetSequence={captchaResetSequence}
+            />
+            <div className="lg-register-actions">
+              <button
+                type="button"
+                className="lg-button lg-button-secondary"
+                onClick={handleResend}
+                disabled={Boolean(busy) || !RECAPTCHA_SITE_KEY}
+              >
+                {busy === "resend" ? "Sending..." : "Resend Verification Code"}
+              </button>
+            </div>
+          </section>
+          {statusMessage && (
+            <p
+              className={statusError ? "lg-register-error" : "lg-register-description"}
+              role={statusError ? "alert" : "status"}
+            >
+              {statusMessage}
+            </p>
+          )}
+        </div>
+      )}
+
+      {step === 5 && (
+        <section className="lg-register-section">
+          <h3><ShieldCheck size={20} /> Email Verified</h3>
+          <p className="lg-register-description" role="status">
+            {statusMessage || "Your email has been verified successfully."}
+          </p>
+          <p className="lg-register-description">
+            Your registration is complete. Close this window and select Log-in.
+            Login functionality will be connected in a later backend step.
+          </p>
+        </section>
+      )}
+
+      {step === 3 && onPreviewEmailOtp && (
         <button
           type="button"
           className="lg-auth-preview-link"
