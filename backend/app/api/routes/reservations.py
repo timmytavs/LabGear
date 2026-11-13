@@ -1,44 +1,27 @@
 """
-LabGear Backend File 113 — reservation, technician decision, issue and return API.
+LabGear Backend File 127 — reservations, handovers, and owner cancellation.
 
-Destination: backend/app/api/routes/reservations.py (REPLACE existing file).
+REPLACE: backend/app/api/routes/reservations.py
 
-Existing endpoints preserved:
-    POST /api/reservations
-    GET  /api/reservations/my
+Preserves the seven working File 115 routes, including the corrected
+"completed" reservation state after equipment return. Adds:
+    POST /api/reservations/{reservation_id}/cancel
 
-New technician endpoints:
-    GET  /api/reservations/pending
-    POST /api/reservations/{reservation_id}/decision
+Cancellation rules:
+  - Only an authenticated student/instructor may cancel their own booking.
+  - Only Pending and Approved bookings may be cancelled.
+  - Issued, Completed, Rejected, and already-Cancelled bookings cannot be.
+  - A Pending booking has no unit allocations to release.
+  - An Approved booking's reserved allocations are removed (not marked as
+    returned, since the equipment was never issued). Its approval decision
+    remains intact, and an audit event captures the released allocation IDs.
+  - A physical unit is made available only if no other active reservation
+    uses it; other reservations may book the same unit in nonoverlapping slots.
+  - Reservation, allocation, inventory, and audit changes commit atomically.
 
-New File 113 technician endpoints:
-    GET  /api/reservations/active
-    POST /api/reservations/{reservation_id}/issue
-    POST /api/reservations/{reservation_id}/return
-
-Business rules:
-    * Students and instructors may submit reservation requests.
-    * Requester identity comes only from the authenticated server-side session.
-    * Technician-only access is required to view pending requests or decide them.
-    * Mutating POST requests require the existing session CSRF token.
-    * Browser requests remain restricted to the existing local development hosts.
-    * Reservation dates must be timezone-aware and in the future at submission.
-    * Quantity is limited to 1..50.
-    * Equipment must be active when requested and when approved.
-    * Equipment-row FOR UPDATE serializes reservation submissions and approvals.
-    * Pending, approved, partially-issued, and issued requests count against
-      capacity while their reservation time ranges overlap.
-    * Approval allocates exact physical units only when enough non-conflicting
-      units can be locked.
-    * Rejection requires a recorded reason.
-    * Reservation, decision, unit allocation, inventory status, and activity
-      log changes commit in one transaction.
-    * Issue requires approved status and already allocated units.
-    * Return requires issued status; notes and condition are logged.
-    * The issue/return feature operates on ALL allocated units in this first
-      academic prototype; partial returns can be added separately later.
-
-Uses existing PostgreSQL models. No schema changes or migrations.
+Uses the existing PostgreSQL models and tables. No new model or migration is
+included; the existing reservations.status constraint MUST permit 'cancelled'.
+Check that constraint in pgAdmin before testing a cancellation transaction.
 """
 
 from __future__ import annotations
@@ -1214,3 +1197,206 @@ def return_reservation(
             status_code=503,
             detail="Equipment return service is temporarily unavailable.",
         ) from None
+
+# ================================================================
+# File 127 — Cancellation by the booking owner
+# ================================================================
+
+class ReservationCancelRequest(BaseModel):
+    """An optional explanation. Identity and target status are server-derived."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        hide_input_in_errors=True,
+    )
+
+    reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def clean_cancel_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class ReservationCancelResponse(BaseModel):
+    reservation_id: int
+    reservation_code: str
+    previous_status: str
+    status: Literal["cancelled"]
+    released_units: int = Field(ge=0)
+    message: str
+
+
+@router.post(
+    "/{reservation_id}/cancel",
+    response_model=ReservationCancelResponse,
+)
+def cancel_reservation(
+    reservation_id: int,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    payload: ReservationCancelRequest | None = None,
+) -> ReservationCancelResponse:
+    """Cancel only the caller's unissued booking, preserving audit history."""
+    if reservation_id <= 0:
+        raise HTTPException(status_code=422, detail="Invalid reservation ID.")
+
+    principal = _authenticated_session(request, db, method="POST")
+    if principal.role not in _ALLOWED_REQUEST_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students and instructors may cancel reservations.",
+        )
+
+    now = datetime.now(timezone.utc)
+    reason = payload.reason if payload is not None else None
+    client_ip = _require_local_browser_request(request)
+
+    try:
+        # Reservation row first: consistent with approval, issue, and return.
+        # Also serialize concurrent cancellation, approval, and issuance.
+        reservation = db.execute(
+            select(Reservation)
+            .where(
+                Reservation.id == reservation_id,
+                Reservation.requester_id == principal.user_id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+
+        # Do not disclose bookings owned by another account.
+        if reservation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Reservation not found.",
+            )
+
+        previous_status = reservation.status
+        if previous_status not in {"pending", "approved"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only pending or approved (not issued) reservations can be cancelled.",
+            )
+
+        # Acquire the equipment lock before changing allocations; this is the
+        # same lock order used in the existing reservation lifecycle.
+        equipment = db.execute(
+            select(Equipment)
+            .where(Equipment.id == reservation.equipment_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if equipment is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Reservation equipment cannot be resolved.",
+            )
+
+        allocation_rows = _locked_allocation_rows(db, reservation.id)
+        released_unit_ids: list[int] = []
+        released_asset_tags: list[str] = []
+        released_allocation_ids: list[int] = []
+
+        if previous_status == "pending":
+            if allocation_rows:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Unexpected allocations exist for this pending reservation.",
+                )
+        else:
+            if len(allocation_rows) != reservation.quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Allocated unit records are incomplete; cancellation was not applied.",
+                )
+
+            for allocation, unit in allocation_rows:
+                if allocation.allocation_status != "reserved":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="An assigned unit has already been issued or changed.",
+                    )
+                released_unit_ids.append(unit.id)
+                released_asset_tags.append(unit.asset_tag)
+                allocation_id = getattr(allocation, "id", None)
+                if allocation_id is not None:
+                    released_allocation_ids.append(allocation_id)
+
+            # Multiple nonoverlapping bookings may share a physical unit.
+            # Only free a physical unit when no OTHER live booking uses it.
+            other_active_allocations = db.execute(
+                select(ReservationUnit.equipment_unit_id)
+                .join(
+                    Reservation,
+                    Reservation.id == ReservationUnit.reservation_id,
+                )
+                .where(
+                    ReservationUnit.equipment_unit_id.in_(released_unit_ids),
+                    ReservationUnit.reservation_id != reservation.id,
+                    ReservationUnit.allocation_status.in_(_ACTIVE_ALLOCATION_STATUSES),
+                    Reservation.status.in_(_BLOCKING_RESERVATION_STATUSES),
+                )
+            ).scalars().all()
+            units_still_allocated = set(other_active_allocations)
+
+            # 'returned' would falsely claim a physical handover took place.
+            # The current schema has no verified 'released' allocation status,
+            # so remove only the unissued reservation_units rows. Preserve
+            # the approved decision and log IDs/tags below for auditability.
+            for allocation, unit in allocation_rows:
+                db.delete(allocation)
+                if unit.id not in units_still_allocated and unit.unit_status == "reserved":
+                    unit.unit_status = "available"
+                    unit.updated_at = now
+
+        # A cancelled booking no longer consumes capacity; the existing
+        # capacity queries deliberately consider only live booking statuses.
+        reservation.status = "cancelled"
+        reservation.updated_at = now
+
+        db.add(
+            ActivityLog(
+                event_type="reservation_cancelled",
+                user_id=principal.user_id,
+                ip_address=client_ip,
+                user_agent=request.headers.get("user-agent", "")[:1000],
+                details={
+                    "reservation_id": reservation.id,
+                    "reservation_code": reservation.reservation_code,
+                    "equipment_id": reservation.equipment_id,
+                    "previous_status": previous_status,
+                    "status": "cancelled",
+                    "reason": reason,
+                    "quantity": reservation.quantity,
+                    "released_unit_ids": released_unit_ids,
+                    "released_asset_tags": released_asset_tags,
+                    "released_allocation_ids": released_allocation_ids,
+                },
+            )
+        )
+
+        result = ReservationCancelResponse(
+            reservation_id=reservation.id,
+            reservation_code=reservation.reservation_code,
+            previous_status=previous_status,
+            status="cancelled",
+            released_units=len(released_unit_ids),
+            message="Reservation cancelled successfully.",
+        )
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return result
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Reservation cancellation service is temporarily unavailable.",
+        ) from None
+

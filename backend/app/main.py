@@ -1,7 +1,7 @@
 
-"""LabGear Backend File 90 — FastAPI application with admin monitoring.
+"""LabGear Backend File 121 — FastAPI application with admin user management.
 
-Destination: backend/app/main.py (REPLACE the installed File 86).
+Destination: backend/app/main.py (REPLACE the currently installed main.py).
 
 Preserves:
 - Registration, login/session, equipment, and reservation routers.
@@ -13,6 +13,8 @@ Preserves:
 
 Adds:
 - Admin monitoring router (File 89): GET /api/admin/monitoring
+- Admin user management router (File 120): GET /api/admin/users,
+  PATCH /api/admin/users/{user_id}/role
 
 SecurityHeadersMiddleware wraps the complete Starlette/FastAPI middleware
 stack. This ensures the headers are added to normal responses, handled errors,
@@ -37,7 +39,11 @@ from starlette.datastructures import MutableHeaders
 from app.api.routes.admin_monitoring import (
     router as admin_monitoring_router,
 )
+from app.api.routes.admin_user_management import (
+    router as admin_user_management_router,
+)
 from app.api.routes.equipment import router as equipment_router
+from app.api.routes.equipment_management import router as equipment_management_router
 from app.api.routes.login import router as login_router
 from app.api.routes.password_recovery import (
     router as password_recovery_router,
@@ -104,6 +110,7 @@ app.add_middleware(
 app.include_router(registration_router)
 app.include_router(login_router)
 app.include_router(equipment_router)
+app.include_router(equipment_management_router)
 app.include_router(reservations_router)
 
 # File 85: password recovery using security-answer verification and email OTP.
@@ -111,6 +118,9 @@ app.include_router(password_recovery_router)
 
 # File 89: protected, admin-only security monitoring dashboard data.
 app.include_router(admin_monitoring_router)
+
+# File 120: protected, admin-only account listing and role assignment.
+app.include_router(admin_user_management_router)
 
 
 @app.get("/", tags=["System"])
