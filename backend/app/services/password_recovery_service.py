@@ -1,5 +1,5 @@
 
-"""LabGear Backend File 84 — password recovery service.
+"""LabGear Backend File 142 — support user-selected recovery questions (preserves File 138).
 
 Fix: security-answer verification is read-only and no longer requests SELECT FOR UPDATE, which requires unnecessary UPDATE privilege.
 
@@ -67,14 +67,21 @@ from app.services.email_delivery_service import (
 
 PASSWORD_RECOVERY_OTP_PURPOSE = "reset"
 
-RECOVERY_QUESTION_CODES = frozenset({"Q7", "Q2", "Q4"})
+# All eight questions from Section 5. Recovery accepts only a question
+# actually saved for the account; merely knowing a code is not sufficient.
+RECOVERY_QUESTION_CODES = frozenset(f"Q{i}" for i in range(1, 9))
 RECOVERY_QUESTIONS = {
-    "Q7": "What was the name of your elementary school?",
+    "Q1": "What was the name of your first pet?",
     "Q2": "Who was your best friend in elementary school?",
+    "Q3": "Who was your favorite teacher in high school?",
     "Q4": "What is your mother's maiden first name?",
+    "Q5": "What street did you live on in Grade 1?",
+    "Q6": "What was the first song you learned by heart?",
+    "Q7": "What was the name of your elementary school?",
+    "Q8": "What dish did you cook for the first time?",
 }
 
-USERNAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9]{5,16}\Z")
+USERNAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9]{5,19}\Z")
 USER_ID_PATTERN = re.compile(r"[0-9]{4}-[0-9]{4}\Z")
 ANSWER_PATTERN = re.compile(r"[A-Za-z]+(?: [A-Za-z]+)*\Z")
 OTP_PATTERN = re.compile(r"[0-9]{6}\Z")
@@ -288,7 +295,7 @@ def _account_locked(db: Session, user_id: str, now: datetime) -> bool:
 
 
 def _lockout_duration(failed_count: int, settings: AuthSettings) -> int:
-    """Use the same seeded 3/6/9-failure lockout tiers as login."""
+    """Use the same configured 3/6/9-failure lockout tiers as login."""
     if failed_count < 3 or failed_count % 3 != 0:
         return 0
 
@@ -1138,7 +1145,7 @@ def send_password_recovery_otp_email(
         "A password recovery request was made for your LabGear account.\n\n"
         "Your password reset verification code is:\n\n"
         f"{delivery.otp_code}\n\n"
-        "This code expires in three minutes and can be used only once. "
+        "This code expires in five minutes and can be used only once. "
         "Enter it only on the LabGear website. Never share this code.\n\n"
         "If you did not request a password reset, ignore this email.\n"
     )

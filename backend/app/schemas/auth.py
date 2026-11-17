@@ -1,5 +1,5 @@
 
-"""LabGear Step 39: Pydantic request/response schemas for authentication.
+"""LabGear File 141: authentication schemas with selectable security questions.
 
 Validation only. These classes do not verify CAPTCHA, authenticate users,
 validate OTPs against the database, issue sessions, or send emails.
@@ -30,6 +30,8 @@ SelfRegistrationRole = Literal["student", "instructor"]
 OTPPurpose = Literal["registration", "login", "recovery"]
 ID_PATTERN = r"^[0-9]{4}-[0-9]{4}$"
 OTP_PATTERN = r"^[0-9]{6}$"
+SECURITY_ANSWER_PATTERN = r"^[A-Za-z]+(?: [A-Za-z]+)*$"
+SecurityQuestionCode = Literal["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"]
 
 
 class StrictRequest(BaseModel):
@@ -38,13 +40,33 @@ class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
 
+class SelectedSecurityQuestion(StrictRequest):
+    """One user-chosen question and its confidential registration answer."""
+
+    question_code: SecurityQuestionCode
+    answer: str = Field(
+        min_length=2,
+        max_length=50,
+        pattern=SECURITY_ANSWER_PATTERN,
+        repr=False,
+        exclude=True,
+    )
+
+    @field_validator("answer", mode="before")
+    @classmethod
+    def clean_answer(cls, value: object) -> object:
+        # Accept outer whitespace as the existing legacy fields do, but never
+        # accept double spaces, punctuation, numbers, or blank answers.
+        return value.strip() if isinstance(value, str) else value
+
+
 class RegistrationRequest(StrictRequest):
     # Identity, age, and address are defined by the IT 107 registration form.
     id_number: str = Field(pattern=ID_PATTERN)
-    first_name: str = Field(min_length=1, max_length=26)
-    middle_name: str | None = Field(default=None, max_length=26)
-    family_name: str = Field(min_length=1, max_length=26)
-    name_extension: str | None = Field(default=None, max_length=26)
+    first_name: str = Field(min_length=1, max_length=50)
+    middle_name: str | None = Field(default=None, max_length=50)
+    family_name: str = Field(min_length=1, max_length=50)
+    name_extension: str | None = Field(default=None, max_length=50)
     extension_type: Literal["", "Jr.", "Sr.", "Other"] | None = None
     birthdate: date
 
@@ -56,7 +78,7 @@ class RegistrationRequest(StrictRequest):
     zip_code: str = Field(pattern=r"^[0-9]{4}$")
 
     email: EmailStr = Field(max_length=100)
-    username: str = Field(min_length=6, max_length=17)
+    username: str = Field(min_length=6, max_length=20)
     password: str = Field(repr=False, exclude=True)
     confirm_password: str = Field(repr=False, exclude=True)
 
@@ -68,15 +90,25 @@ class RegistrationRequest(StrictRequest):
     )
     class_section_or_unit: str = Field(min_length=1, max_length=100)
 
-    # Fixed security questions Q7, Q2 and Q4; never return answers in JSON.
-    security_answer_q7: str = Field(
-        min_length=1, max_length=200, repr=False, exclude=True
+    # Accept either the existing Q7/Q2/Q4 form or three user selections.
+    # Keep the legacy fields optional ONLY during the transition. The model
+    # validator below still requires one complete question-answer format.
+    # Never serialize any answers or the selected-question collection.
+    security_answer_q7: str | None = Field(
+        default=None, min_length=2, max_length=50,
+        pattern=SECURITY_ANSWER_PATTERN, repr=False, exclude=True,
     )
-    security_answer_q2: str = Field(
-        min_length=1, max_length=200, repr=False, exclude=True
+    security_answer_q2: str | None = Field(
+        default=None, min_length=2, max_length=50,
+        pattern=SECURITY_ANSWER_PATTERN, repr=False, exclude=True,
     )
-    security_answer_q4: str = Field(
-        min_length=1, max_length=200, repr=False, exclude=True
+    security_answer_q4: str | None = Field(
+        default=None, min_length=2, max_length=50,
+        pattern=SECURITY_ANSWER_PATTERN, repr=False, exclude=True,
+    )
+    security_questions: list[SelectedSecurityQuestion] | None = Field(
+        default=None, min_length=3, max_length=3,
+        repr=False, exclude=True,
     )
     privacy_consent: Literal[True]
 
@@ -91,8 +123,7 @@ class RegistrationRequest(StrictRequest):
     @field_validator(
         "first_name", "family_name", "purok_street", "barangay",
         "municipality_city", "province", "country", "username",
-        "department", "class_section_or_unit", "security_answer_q7",
-        "security_answer_q2", "security_answer_q4", "captcha_token",
+        "department", "class_section_or_unit", "captcha_token",
     )
     @classmethod
     def reject_blank(cls, value: str) -> str:
@@ -100,6 +131,18 @@ class RegistrationRequest(StrictRequest):
         if not cleaned:
             raise ValueError("This field cannot be blank.")
         return cleaned
+
+    @field_validator(
+        "security_answer_q7", "security_answer_q2", "security_answer_q4",
+        mode="before",
+    )
+    @classmethod
+    def clean_legacy_answer(cls, value: object) -> object:
+        # An explicitly sent null is invalid; omitted fields remain None.
+        # This protects the existing public registration route's validators.
+        if value is None:
+            raise ValueError("Security answer cannot be null.")
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("middle_name", "name_extension")
     @classmethod
@@ -109,9 +152,9 @@ class RegistrationRequest(StrictRequest):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        if re.fullmatch(r"[A-Za-z0-9_.-]{6,17}", value) is None:
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9]{5,19}", value) is None:
             raise ValueError(
-                "Use 6–17 letters, digits, underscores, dots, or hyphens."
+                "Username must start with a letter and contain 6–20 letters or digits."
             )
         return value
 
@@ -147,6 +190,23 @@ class RegistrationRequest(StrictRequest):
 
     @model_validator(mode="after")
     def validate_registration(self):
+        legacy_answers = (
+            self.security_answer_q7,
+            self.security_answer_q2,
+            self.security_answer_q4,
+        )
+        if self.security_questions is None:
+            if not all(answer is not None for answer in legacy_answers):
+                raise ValueError("Provide answers for all three security questions.")
+        else:
+            if any(answer is not None for answer in legacy_answers):
+                raise ValueError(
+                    "Use selected security questions or the existing fixed questions, not both."
+                )
+            codes = [item.question_code for item in self.security_questions]
+            if len(set(codes)) != 3:
+                raise ValueError("Select three different security questions.")
+
         if self.password != self.confirm_password:
             raise ValueError("Password and confirmation must match.")
         if self.extension_type == "Other" and not self.name_extension:
@@ -163,7 +223,7 @@ class RegistrationRequest(StrictRequest):
 
 
 class LoginRequest(StrictRequest):
-    username: str = Field(min_length=1, max_length=17)
+    username: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, repr=False, exclude=True)
     captcha_token: str = Field(
         min_length=1, max_length=4096, repr=False, exclude=True

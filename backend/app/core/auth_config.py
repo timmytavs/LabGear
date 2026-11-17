@@ -1,9 +1,13 @@
-
-"""LabGear authentication configuration (Backend Step 43).
+"""LabGear authentication configuration (Backend File 131).
 
 Loads three independent, persistent 256-bit secrets from the backend .env
 file or process environment: email OTP HMAC, JWT signing, and AES-256-GCM
 contact-number encryption. No default or development bypass keys exist.
+
+This module also defines the instructor-wide IT 107 security policy. Policy
+consumers must enforce these values in their respective service and route
+modules; changing this file alone does not update hard-coded validation or
+frontend behavior.
 
 Importing this module does not read secrets, connect to PostgreSQL, or
 activate authentication. Call load_auth_settings() when configuring services.
@@ -32,16 +36,27 @@ class AuthSettings:
     jwt_signing_key: bytes = field(repr=False)
     contact_aes_key: bytes = field(repr=False)
 
-    # Policy values only; future FastAPI services must enforce them.
+    # Instructor-wide account input policy.
+    username_min_length: int = 6
+    username_max_length: int = 20
+    password_min_length: int = 8
+    name_field_max_length: int = 50
+    forgot_password_after_failed_logins: int = 2
+
+    # The user must select this many distinct questions from the Section 5 bank.
+    security_questions_required: int = 3
+    security_questions_must_be_distinct: bool = True
+
+    # Authentication policy values.
     jwt_algorithm: str = "HS256"
-    otp_expiry_seconds: int = 180
+    otp_expiry_seconds: int = 5 * 60
     otp_max_failed_attempts: int = 3
     otp_resend_cooldown_seconds: int = 60
     otp_max_resends_in_15_minutes: int = 3
-    session_idle_timeout_seconds: int = 9 * 60
-    login_lockout_seconds: tuple[int, int, int] = (24, 48, 96)
+    session_idle_timeout_seconds: int = 15 * 60
+    login_lockout_seconds: tuple[int, int, int] = (15, 30, 60)
     ip_failure_window_seconds: int = 10 * 60
-    ip_block_threshold: int = 14
+    ip_block_threshold: int = 10
 
 
 def _read_32_byte_hex_key(variable_name: str) -> bytes:

@@ -1,13 +1,13 @@
 
-"""LabGear Backend File 106 — security lockout email alerts (preserves File 105).
+"""LabGear Backend File 137 — updated login security settings (preserves File 106).
 
 Destination: backend/app/services/login_service.py (REPLACE)
 
 This INTERNAL service provides:
   - Login CAPTCHA + username/password verification (Argon2id)
-  - Progressive 24/48/96-second account lockouts at 3/6/9 failed passwords
-  - IP blocking after 14 failed password/OTP attempts in 10 minutes
-  - Purpose-bound, single-use email login OTP (3-minute expiry; 3 guesses)
+  - Progressive 15/30/60-second account lockouts at 3/6/9 failed passwords
+  - IP blocking after 10 failed password/OTP attempts in 10 minutes
+  - Purpose-bound, single-use email login OTP (5-minute expiry; 3 guesses)
   - Login OTP cooldown (60 seconds) and three reissues/15-minute window
   - SMTP_SSL Gmail delivery using the EXISTING secure SMTP settings
   - Security audit records and per-IP transaction serialization
@@ -70,7 +70,7 @@ LOGIN_OTP_PURPOSE = "login"
 IP_BLOCK_SECONDS = 10 * 60
 OTP_RESEND_WINDOW_SECONDS = 15 * 60
 FAILED_LOGIN_EVENTS = ("login_password_failed", "login_otp_failed")
-USERNAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9]{5,16}\Z")
+USERNAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9]{5,19}\Z")
 OTP_PATTERN = re.compile(r"[0-9]{6}\Z")
 LOCKOUT_ALERT_THRESHOLDS = (3, 6, 9)
 PHILIPPINE_TIME = timezone(timedelta(hours=8), "PHT")
@@ -383,7 +383,7 @@ def begin_login(
                                 "alert_email_pending": True,
                             },
                         ))
-                        # Notify only at the first occurrence of each seeded
+                        # Notify only at the first occurrence of each configured
                         # tier. Repeated later lockouts must not resend tier 3.
                         if (
                             user.failed_login_attempts in LOCKOUT_ALERT_THRESHOLDS
@@ -594,7 +594,7 @@ def send_login_otp_email(delivery: PendingLoginOTP) -> None:
     message.set_content(
         "Your LabGear login verification code is:\n\n"
         f"{delivery.otp_code}\n\n"
-        "It expires three minutes after issuance. Never share this code. "
+        "It expires five minutes after issuance. Never share this code. "
         "If you did not attempt to log in, please secure your account.\n"
     )
     try:

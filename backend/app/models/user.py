@@ -1,4 +1,14 @@
 
+"""LabGear user model — File 133 (instructor-wide IT 107 field lengths).
+
+Destination: backend/app/models/user.py
+
+This model describes existing PostgreSQL columns. It does NOT modify the
+PostgreSQL schema. The corresponding users columns must be widened in the
+database before accepting 20-character usernames or 50-character name fields.
+All existing fields, field types, keys, defaults, and optionality are preserved.
+"""
+
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -20,21 +30,21 @@ from app.db.base import Base
 class User(Base):
     __tablename__ = "users"
 
-    # Primary key
+    # Primary key: unchanged
     id_number: Mapped[str] = mapped_column(
         String(9),
         primary_key=True
     )
 
-    # Personal information
-    first_name: Mapped[str] = mapped_column(String(26))
-    middle_name: Mapped[str | None] = mapped_column(String(26))
-    family_name: Mapped[str] = mapped_column(String(26))
-    name_extension: Mapped[str | None] = mapped_column(String(26))
+    # Personal information: instructor maximum is 50 characters per name field.
+    first_name: Mapped[str] = mapped_column(String(50))
+    middle_name: Mapped[str | None] = mapped_column(String(50))
+    family_name: Mapped[str] = mapped_column(String(50))
+    name_extension: Mapped[str | None] = mapped_column(String(50))
 
     birthdate: Mapped[date] = mapped_column(Date)
 
-    # Address
+    # Address: unchanged
     purok_street: Mapped[str] = mapped_column(String(50))
     barangay: Mapped[str] = mapped_column(String(50))
     municipality_city: Mapped[str] = mapped_column(String(50))
@@ -42,15 +52,15 @@ class User(Base):
     country: Mapped[str] = mapped_column(String(50))
     zip_code: Mapped[str] = mapped_column(String(4))
 
-    # Credentials
+    # Credentials: instructor username maximum is 20 characters.
     email: Mapped[str] = mapped_column(
         String(100),
         unique=True
     )
-    username: Mapped[str] = mapped_column(String(17))
+    username: Mapped[str] = mapped_column(String(20))
     password_hash: Mapped[str] = mapped_column(Text)
 
-    # LabGear-specific fields
+    # LabGear-specific fields: unchanged
     role: Mapped[str] = mapped_column(
         String(20),
         server_default=text("'student'")
@@ -68,7 +78,7 @@ class User(Base):
         String(100)
     )
 
-    # Account verification
+    # Account verification: unchanged
     is_email_verified: Mapped[bool] = mapped_column(
         Boolean,
         server_default=text("false")
@@ -78,7 +88,7 @@ class User(Base):
         server_default=text("'active'")
     )
 
-    # Authentication security
+    # Authentication security: unchanged
     failed_login_attempts: Mapped[int] = mapped_column(
         Integer,
         server_default=text("0")
@@ -87,12 +97,12 @@ class User(Base):
         DateTime(timezone=True)
     )
 
-    # Privacy consent
+    # Privacy consent: unchanged
     privacy_consent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True)
     )
 
-    # Timestamps
+    # Timestamps: unchanged
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()

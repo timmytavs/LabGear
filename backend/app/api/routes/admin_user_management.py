@@ -1,11 +1,13 @@
 
-"""LabGear File 120 — admin-only account listing and role assignment.
+"""LabGear File 129 — admin-only account listing, role and lifecycle management.
 
 CREATE: backend/app/api/routes/admin_user_management.py
 
 Endpoints (after a later main.py router registration):
     GET   /api/admin/users
     PATCH /api/admin/users/{user_id}/role
+    PATCH /api/admin/users/{user_id}/status
+    DELETE /api/admin/users/{user_id}
 
 Security:
 - Reuse the existing PostgreSQL-backed session and CSRF verification.
@@ -15,7 +17,9 @@ Security:
 - Never allow creation, promotion, or modification of an admin account.
 - Never allow an admin to alter their own role.
 - Revoke the target user's existing sessions after a role change.
-- Record role changes in the existing append-only activity log.
+- Record administrator account changes in the existing append-only activity log.
+- Deletion is restricted to deactivated users with no reservation/decision history.
+- Never delete administrator accounts or allow an admin to delete their own account.
 - Never return passwords, email addresses, contact details or OTPs.
 
 No database creation, schema migration, or changes to existing routers.
@@ -31,11 +35,12 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func, select, update, delete
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from app.db.dependencies import DbSession
 from app.models.security import ActivityLog
+from app.models.reservations import Reservation, ReservationDecision
 from app.models.user import User
 from app.services.session_service import (
     CSRF_HEADER_NAME,
@@ -88,6 +93,33 @@ class AdminRoleChangeResponse(BaseModel):
     user: AdminUserItem
     previous_role: str
     changed: bool
+    message: str
+
+
+class AdminAccountStatusRequest(BaseModel):
+    """Only these status changes are supported; never accept arbitrary roles."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    account_status: Literal["active", "inactive"]
+
+
+class AdminAccountStatusResponse(BaseModel):
+    user: AdminUserItem
+    previous_status: str
+    changed: bool
+    message: str
+
+
+class AdminAccountDeleteRequest(BaseModel):
+    """Permanent deletion requires a typed username confirmation."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    confirm_username: str = Field(min_length=1, max_length=50)
+
+
+class AdminAccountDeleteResponse(BaseModel):
+    deleted: bool
+    user_id: str
     message: str
 
 
@@ -299,4 +331,239 @@ def change_user_role(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="User management is temporarily unavailable.",
+        ) from None
+
+
+# ================================================================
+# File 129 — Account deactivation, reactivation and safe deletion
+# ================================================================
+
+_ACTIVE_RESERVATION_STATUSES = (
+    "pending", "approved", "partially_issued", "issued"
+)
+
+
+def _locked_admin_and_target(db: DbSession, *, actor_id: str, target_id: str):
+    """Serialize admin account mutations; never change admin/self accounts."""
+    actor = db.execute(
+        select(User).where(User.id_number == actor_id).with_for_update()
+    ).scalar_one_or_none()
+    if (
+        actor is None
+        or actor.role != "admin"
+        or actor.account_status != "active"
+    ):
+        raise HTTPException(status_code=403, detail="Administrator access required.")
+    if actor_id == target_id:
+        raise HTTPException(status_code=403, detail="Cannot modify your own admin account.")
+
+    target = db.execute(
+        select(User).where(User.id_number == target_id).with_for_update()
+    ).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target.role == "admin":
+        raise HTTPException(status_code=403, detail="Administrator accounts are protected.")
+    if target.role not in _ASSIGNABLE_ROLES:
+        raise HTTPException(status_code=409, detail="Unsupported account role.")
+    return target
+
+
+def _has_active_reservations(db: DbSession, user_id: str) -> bool:
+    return db.execute(
+        select(Reservation.id).where(
+            Reservation.requester_id == user_id,
+            Reservation.status.in_(_ACTIVE_RESERVATION_STATUSES),
+        ).limit(1)
+    ).first() is not None
+
+
+def _has_historical_transactions(db: DbSession, user_id: str) -> bool:
+    """Preserve the history of borrowers and technicians on hard deletion."""
+    if db.execute(
+        select(Reservation.id).where(Reservation.requester_id == user_id).limit(1)
+    ).first() is not None:
+        return True
+    if db.execute(
+        select(ReservationDecision.id).where(
+            ReservationDecision.decided_by == user_id
+        ).limit(1)
+    ).first() is not None:
+        return True
+    return False
+
+
+@router.patch("/{user_id}/status", response_model=AdminAccountStatusResponse)
+def change_user_status(
+    user_id: str,
+    payload: AdminAccountStatusRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> AdminAccountStatusResponse:
+    """Deactivate or reactivate a non-admin user; revoke active sessions."""
+    principal = _require_admin(request, db, method="PATCH")
+    if _USER_ID_PATTERN.fullmatch(user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    client_ip = _trusted_local_request(request)
+    try:
+        with db.begin():
+            target = _locked_admin_and_target(
+                db, actor_id=principal.user_id, target_id=user_id
+            )
+            if target.account_status not in {"active", "inactive"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Account status cannot be changed from its current state.",
+                )
+            previous = target.account_status
+            changed = previous != payload.account_status
+            if changed:
+                if (
+                    payload.account_status == "inactive"
+                    and _has_active_reservations(db, user_id)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Resolve this user's pending, approved or issued reservations "
+                            "before deactivating the account."
+                        ),
+                    )
+                now = datetime.now(timezone.utc)
+                target.account_status = payload.account_status
+                target.updated_at = now
+                # End all existing sessions, including those on other devices.
+                db.execute(
+                    update(auth_sessions)
+                    .where(
+                        auth_sessions.c.user_id == user_id,
+                        auth_sessions.c.revoked_at.is_(None),
+                    )
+                    .values(revoked_at=now)
+                )
+                db.add(
+                    ActivityLog(
+                        event_type=(
+                            "admin_user_deactivated"
+                            if payload.account_status == "inactive"
+                            else "admin_user_reactivated"
+                        ),
+                        user_id=principal.user_id,
+                        ip_address=client_ip,
+                        user_agent=request.headers.get("user-agent", "")[:500],
+                        details={
+                            "target_user_id": user_id,
+                            "previous_status": previous,
+                            "new_status": payload.account_status,
+                        },
+                    )
+                )
+            result = AdminAccountStatusResponse(
+                user=_item(target),
+                previous_status=previous,
+                changed=changed,
+                message=(
+                    "Account deactivated and existing sessions revoked."
+                    if changed and payload.account_status == "inactive"
+                    else "Account reactivated; the user may sign in again."
+                    if changed
+                    else "The account already has this status."
+                ),
+            )
+        response.headers["Cache-Control"] = "no-store"
+        return result
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Account status service is temporarily unavailable.",
+        ) from None
+
+
+@router.delete("/{user_id}", response_model=AdminAccountDeleteResponse)
+def delete_user_account(
+    user_id: str,
+    payload: AdminAccountDeleteRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> AdminAccountDeleteResponse:
+    """Permanently delete an unused, deactivated account, preserving history.
+
+    Important: this is a true deletion, not a soft-delete. Any existing
+    reservation or technician decision prevents the operation. Database
+    foreign keys are allowed to reject any other historical dependencies.
+    The DB's activity_logs.user_id ON DELETE SET NULL retains audit events.
+    """
+    principal = _require_admin(request, db, method="DELETE")
+    if _USER_ID_PATTERN.fullmatch(user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    client_ip = _trusted_local_request(request)
+    try:
+        with db.begin():
+            target = _locked_admin_and_target(
+                db, actor_id=principal.user_id, target_id=user_id
+            )
+            if payload.confirm_username != target.username:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Type the exact username to confirm permanent deletion.",
+                )
+            if target.account_status != "inactive":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Deactivate the account before permanent deletion.",
+                )
+            if _has_historical_transactions(db, user_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Permanent deletion is blocked because this account has "
+                        "reservation or technician-decision history. Keep it "
+                        "deactivated to preserve those records."
+                    ),
+                )
+            # Append-only audit: preserve the administrator's deletion event.
+            # The deleted user's older audit rows are retained by SET NULL FK.
+            db.add(
+                ActivityLog(
+                    event_type="admin_user_deleted",
+                    user_id=principal.user_id,
+                    ip_address=client_ip,
+                    user_agent=request.headers.get("user-agent", "")[:500],
+                    details={
+                        "target_user_id": user_id,
+                        "target_role": target.role,
+                        "previous_status": target.account_status,
+                    },
+                )
+            )
+            db.execute(delete(User).where(User.id_number == user_id))
+        response.headers["Cache-Control"] = "no-store"
+        return AdminAccountDeleteResponse(
+            deleted=True,
+            user_id=user_id,
+            message="Account permanently deleted. Security audit records retained.",
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Deletion was blocked by linked database records. "
+                "Leave this account deactivated to preserve system history."
+            ),
+        ) from None
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Account deletion service is temporarily unavailable.",
         ) from None

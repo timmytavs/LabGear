@@ -22,7 +22,7 @@ from argon2.exceptions import InvalidHashError, VerificationError
 
 _password_hasher = PasswordHasher()
 
-PASSWORD_MIN_LENGTH = 10
+PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 64
 OTP_LENGTH = 6
 
@@ -33,7 +33,7 @@ def password_errors(password: str) -> list[str]:
     if not isinstance(password, str):
         return ["Password must be text."]
     if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
-        errors.append("Password must contain 10 to 64 characters.")
+        errors.append("Password must contain 8 to 64 characters.")
     if not re.search(r"[A-Z]", password):
         errors.append("Add an uppercase letter.")
     if not re.search(r"[a-z]", password):

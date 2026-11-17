@@ -22,6 +22,8 @@
  * File 126 adds a read-only paginated damage/repair audit view using File 125.
  * File 128 lets students and instructors cancel their own pending/approved
  * reservations via File 127. Existing frontend modules are preserved.
+ * File 130 adds admin-only account deactivation, reactivation, and guarded
+ * permanent deletion via File 129. Pagination is hidden on single-page lists.
  * Existing auth, inventory actions, reservations, and admin screens are preserved.
  * Requires File 117 to mount the inventory API in FastAPI.
  * File 114 connects the existing File 113 technician backend endpoints:
@@ -3938,6 +3940,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
   const [loadError, setLoadError] = useState("");
   const [desiredRoles, setDesiredRoles] = useState({});
   const [confirmation, setConfirmation] = useState(null);
+  const [accountAction, setAccountAction] = useState(null);
+  const [typedDeleteUsername, setTypedDeleteUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState(null);
 
@@ -3968,8 +3972,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
         setTotal(data.total);
         setPages(data.pages);
         setDesiredRoles({});
-        if (page > 1 && data.pages > 0 && page > data.pages) {
-          setPage(data.pages);
+        if (page > Math.max(1, data.pages)) {
+          setPage(Math.max(1, data.pages));
         }
       })
       .catch((error) => {
@@ -3991,6 +3995,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
     setPage(1);
     setSearch(searchText.trim());
     setConfirmation(null);
+    setAccountAction(null);
+    setTypedDeleteUsername("");
   }
 
   function prepareRoleChange(user) {
@@ -4002,6 +4008,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
     )
       return;
     setNotice(null);
+    setAccountAction(null);
+    setTypedDeleteUsername("");
     setConfirmation({
       userId: user.user_id,
       username: user.username,
@@ -4045,6 +4053,95 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
     }
   }
 
+  // File 130: actions are only proposals until FastAPI confirms the change.
+  // All access controls, transaction checks and audit logs remain server-side.
+  function prepareAccountAction(user, action) {
+    if (saving || loading || user?.role === "admin") return;
+    if (!["student", "instructor", "technician"].includes(user?.role)) return;
+    const currentStatus = user.account_status;
+    if (action === "deactivate" && currentStatus !== "active") return;
+    if (
+      (action === "reactivate" || action === "delete") &&
+      currentStatus !== "inactive"
+    )
+      return;
+    setNotice(null);
+    setConfirmation(null);
+    setTypedDeleteUsername("");
+    setAccountAction({
+      userId: user.user_id,
+      username: user.username,
+      action,
+      currentStatus,
+    });
+  }
+
+  async function submitAccountAction(event) {
+    event.preventDefault();
+    if (!accountAction || saving || loading) return;
+    const action = accountAction;
+    if (action.action === "delete" && typedDeleteUsername !== action.username) {
+      setNotice({
+        type: "error",
+        message:
+          "Type the exact username before permanently deleting this account.",
+      });
+      return;
+    }
+    setSaving(true);
+    setNotice(null);
+    const path = `/api/admin/users/${encodeURIComponent(action.userId)}`;
+    try {
+      if (action.action === "delete") {
+        const result = await adminUsersApi(path, {
+          method: "DELETE",
+          body: { confirm_username: typedDeleteUsername },
+        });
+        if (result?.deleted !== true || result?.user_id !== action.userId) {
+          throw new Error(
+            "FastAPI did not confirm account deletion. Refresh the user list before trying again.",
+          );
+        }
+        setNotice({
+          type: "success",
+          message: `The account ${action.username} was permanently deleted. This action cannot be undone.`,
+        });
+      } else {
+        const nextStatus =
+          action.action === "deactivate" ? "inactive" : "active";
+        const result = await adminUsersApi(`${path}/status`, {
+          method: "PATCH",
+          body: { account_status: nextStatus },
+        });
+        if (
+          result?.user?.user_id !== action.userId ||
+          result?.user?.account_status !== nextStatus
+        ) {
+          throw new Error(
+            "FastAPI did not confirm the account status. Refresh the user list before retrying.",
+          );
+        }
+        setNotice({
+          type: "success",
+          message: `${action.username} ${nextStatus === "inactive" ? "was deactivated and signed out" : "was reactivated"}.`,
+        });
+      }
+      setAccountAction(null);
+      setTypedDeleteUsername("");
+      setReload((n) => n + 1);
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error?.message || "Could not update this account.",
+      });
+      if (error?.status === 401) onSessionExpired();
+      if (error?.status === 404 || error?.status === 409)
+        setReload((n) => n + 1);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const showCreated = (value) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
@@ -4079,9 +4176,9 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
             User Management
           </h1>
           <p style={{ margin: 0, color: "#60748e", lineHeight: 1.6 }}>
-            View accounts and assign laboratory technician access to approved,
-            email-verified users. Public registration remains restricted to
-            students and instructors.
+            View accounts, assign roles, deactivate or reactivate access, and
+            safely remove eligible unused accounts. Administrator accounts are
+            protected. Public registration remains for students and instructors.
           </p>
         </div>
 
@@ -4109,6 +4206,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
               disabled={loading || saving}
               onClick={() => {
                 setConfirmation(null);
+                setAccountAction(null);
+                setTypedDeleteUsername("");
                 setReload((n) => n + 1);
               }}
             >
@@ -4162,6 +4261,8 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
                   setRoleFilter(event.target.value);
                   setPage(1);
                   setConfirmation(null);
+                  setAccountAction(null);
+                  setTypedDeleteUsername("");
                 }}
               >
                 <option value="">All roles</option>
@@ -4206,6 +4307,106 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
             >
               {loadError}
             </p>
+          )}
+
+          {accountAction && (
+            <form
+              onSubmit={submitAccountAction}
+              aria-label="Confirm account management action"
+              style={{
+                border: `1px solid ${accountAction.action === "delete" ? "#fca5a5" : "#93b8ff"}`,
+                background:
+                  accountAction.action === "delete" ? "#fff7f7" : "#eff6ff",
+                borderRadius: 12,
+                padding: 18,
+                marginBottom: 18,
+                display: "grid",
+                gap: 12,
+                lineHeight: 1.6,
+              }}
+            >
+              <strong
+                style={{
+                  color:
+                    accountAction.action === "delete" ? "#991b1b" : "#14243e",
+                }}
+              >
+                {accountAction.action === "delete"
+                  ? "Confirm Permanent Account Deletion"
+                  : accountAction.action === "deactivate"
+                    ? "Confirm Account Deactivation"
+                    : "Confirm Account Reactivation"}
+              </strong>
+              <div>
+                Account: <strong>{accountAction.username}</strong> (
+                {accountAction.userId})
+              </div>
+              <p style={{ margin: 0, color: "#344763" }}>
+                {accountAction.action === "delete"
+                  ? "This permanently removes the account from PostgreSQL. It cannot be undone. The backend requires the account to be inactive and without reservation or technician-decision history; linked records may also block deletion. Audit records are retained."
+                  : accountAction.action === "deactivate"
+                    ? "This account will be blocked from signing in, and its existing sessions will be revoked. The backend will refuse deactivation while the user has pending, approved or issued reservations."
+                    : "This account will be allowed to sign in again. A new normal login and email OTP verification will be required."}
+              </p>
+              {accountAction.action === "delete" && (
+                <label style={{ ...labelControl, maxWidth: 440 }}>
+                  Type <strong>{accountAction.username}</strong> exactly to
+                  confirm deletion
+                  <input
+                    style={fieldStyle}
+                    value={typedDeleteUsername}
+                    type="text"
+                    spellCheck={false}
+                    autoComplete="off"
+                    maxLength={50}
+                    disabled={saving}
+                    onChange={(event) =>
+                      setTypedDeleteUsername(event.target.value)
+                    }
+                    placeholder="Enter exact username"
+                    aria-label="Confirm username for permanent deletion"
+                    required
+                  />
+                </label>
+              )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="submit"
+                  disabled={
+                    saving ||
+                    (accountAction.action === "delete" &&
+                      typedDeleteUsername !== accountAction.username)
+                  }
+                  style={{
+                    ...buttonStyle,
+                    background:
+                      accountAction.action === "delete" ? "#b91c1c" : "#245ff2",
+                    borderColor:
+                      accountAction.action === "delete" ? "#b91c1c" : "#245ff2",
+                    color: "white",
+                  }}
+                >
+                  {saving
+                    ? "Saving…"
+                    : accountAction.action === "delete"
+                      ? "Delete Account Permanently"
+                      : accountAction.action === "deactivate"
+                        ? "Confirm Deactivation"
+                        : "Confirm Reactivation"}
+                </button>
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  disabled={saving}
+                  onClick={() => {
+                    setAccountAction(null);
+                    setTypedDeleteUsername("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           )}
 
           {confirmation && (
@@ -4276,7 +4477,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
-                  minWidth: 820,
+                  minWidth: 1160,
                 }}
               >
                 <thead>
@@ -4289,6 +4490,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
                       "Department",
                       "Created",
                       "Assign Role",
+                      "Account Actions",
                     ].map((label) => (
                       <th
                         key={label}
@@ -4420,6 +4622,88 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
                             </span>
                           )}
                         </td>
+                        <td
+                          style={{
+                            padding: "13px 10px",
+                            borderBottom: "1px solid #e6edf6",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          {user.role === "admin" ? (
+                            <span style={{ color: "#71819a", fontSize: 13 }}>
+                              Protected
+                            </span>
+                          ) : (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                              }}
+                            >
+                              {user.account_status === "active" && (
+                                <button
+                                  type="button"
+                                  style={{
+                                    ...buttonStyle,
+                                    color: "#9a3412",
+                                    borderColor: "#fdba74",
+                                  }}
+                                  disabled={saving || loading}
+                                  onClick={() =>
+                                    prepareAccountAction(user, "deactivate")
+                                  }
+                                  aria-label={`Deactivate ${user.username}`}
+                                >
+                                  Deactivate
+                                </button>
+                              )}
+                              {user.account_status === "inactive" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    style={{
+                                      ...buttonStyle,
+                                      color: "#166534",
+                                      borderColor: "#86efac",
+                                    }}
+                                    disabled={saving || loading}
+                                    onClick={() =>
+                                      prepareAccountAction(user, "reactivate")
+                                    }
+                                    aria-label={`Reactivate ${user.username}`}
+                                  >
+                                    Reactivate
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={{
+                                      ...buttonStyle,
+                                      color: "#991b1b",
+                                      borderColor: "#fca5a5",
+                                    }}
+                                    disabled={saving || loading}
+                                    onClick={() =>
+                                      prepareAccountAction(user, "delete")
+                                    }
+                                    aria-label={`Delete ${user.username} permanently`}
+                                  >
+                                    Delete Permanently
+                                  </button>
+                                </>
+                              )}
+                              {!["active", "inactive"].includes(
+                                user.account_status,
+                              ) && (
+                                <span
+                                  style={{ color: "#71819a", fontSize: 13 }}
+                                >
+                                  Unavailable
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -4428,44 +4712,50 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
             </div>
           )}
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 20,
-            }}
-          >
-            <span style={{ color: "#60748e", fontSize: 13 }}>
-              Page {page} of {Math.max(1, pages)}
-            </span>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                type="button"
-                style={buttonStyle}
-                disabled={loading || page <= 1 || saving}
-                onClick={() => {
-                  setPage((p) => Math.max(1, p - 1));
-                  setConfirmation(null);
-                }}
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                style={buttonStyle}
-                disabled={loading || page >= pages || saving}
-                onClick={() => {
-                  setPage((p) => p + 1);
-                  setConfirmation(null);
-                }}
-              >
-                Next
-              </button>
+          {!loading && !loadError && pages > 1 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: 20,
+              }}
+            >
+              <span style={{ color: "#60748e", fontSize: 13 }}>
+                Page {page} of {pages}
+              </span>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  disabled={page <= 1 || saving}
+                  onClick={() => {
+                    setPage((p) => Math.max(1, p - 1));
+                    setConfirmation(null);
+                    setAccountAction(null);
+                    setTypedDeleteUsername("");
+                  }}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  disabled={page >= pages || saving}
+                  onClick={() => {
+                    setPage((p) => Math.min(pages, p + 1));
+                    setConfirmation(null);
+                    setAccountAction(null);
+                    setTypedDeleteUsername("");
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </section>
         <div>
           <button type="button" style={buttonStyle} onClick={onBack}>

@@ -22,25 +22,45 @@ import {
 import "../../styles/auth-security.css";
 
 const RECOVERY_STEPS = ["Account", "Question", "Email OTP", "Password"];
-const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9]{5,16}$/;
+const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9]{5,19}$/;
 const ANSWER_PATTERN = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
 const OTP_PATTERN = /^\d{6}$/;
-const PASSWORD_MIN_LENGTH = 10;
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 64;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 const RECOVERY_QUESTIONS = [
   {
-    value: "Q7",
-    label: "Q7: What was the name of your elementary school?",
+    value: "Q1",
+    label: "Q1: What was the name of your first pet?",
   },
   {
     value: "Q2",
     label: "Q2: Who was your best friend in elementary school?",
   },
   {
+    value: "Q3",
+    label: "Q3: Who was your favorite teacher in high school?",
+  },
+  {
     value: "Q4",
     label: "Q4: What is your mother's maiden first name?",
+  },
+  {
+    value: "Q5",
+    label: "Q5: What street did you live on in Grade 1?",
+  },
+  {
+    value: "Q6",
+    label: "Q6: What was the first song you learned by heart?",
+  },
+  {
+    value: "Q7",
+    label: "Q7: What was the name of your elementary school?",
+  },
+  {
+    value: "Q8",
+    label: "Q8: What dish did you cook for the first time?",
   },
 ];
 
@@ -309,7 +329,7 @@ function OtpField({ value, onChange, error }) {
 
       <div className="lgas-policy">
         <Clock3 size={16} />
-        <span>Expires in 3 minutes after issuance.</span>
+        <span>Expires in 5 minutes after issuance.</span>
       </div>
 
       <p className="lgas-hint">
@@ -450,7 +470,7 @@ export default function AuthSecurityPanel({
 
     if (!USERNAME_PATTERN.test(value)) {
       setError(
-        "Enter the username registered to your LabGear account (6–17 letters or digits, starting with a letter).",
+        "Enter the username registered to your LabGear account (6–20 letters or digits, starting with a letter).",
       );
       return;
     }
@@ -637,7 +657,7 @@ export default function AuthSecurityPanel({
 
     if (!passwordIsStrong(password)) {
       setError(
-        "Use 10–64 characters with uppercase, lowercase, number, and special character.",
+        "Use 8–64 characters with uppercase, lowercase, number, and special character.",
       );
       return;
     }
@@ -836,7 +856,7 @@ export default function AuthSecurityPanel({
                   id="lgas-username"
                   type="text"
                   autoComplete="username"
-                  maxLength={17}
+                  maxLength={20}
                   value={username}
                   placeholder="Enter your username"
                   onChange={(event) => {
@@ -874,8 +894,9 @@ export default function AuthSecurityPanel({
               <h3>Verify Your Security Question</h3>
 
               <p>
-                Select one of the three security questions you answered during
-                registration.
+                Choose one of the three security questions you selected during
+                registration. All eight questions are shown; only your saved
+                questions and answers can verify your account.
               </p>
 
               <div className="lgas-field">
@@ -1010,7 +1031,7 @@ export default function AuthSecurityPanel({
                 <Clock3 size={16} />
 
                 <span>
-                  Code expires in 3 minutes. Maximum 3 incorrect attempts.
+                  Code expires in 5 minutes. Maximum 3 incorrect attempts.
                 </span>
               </div>
 
@@ -1140,7 +1161,7 @@ export default function AuthSecurityPanel({
               </div>
 
               <p className="lgas-hint">
-                Use 10–64 characters with uppercase, lowercase, number, and
+                Use 8–64 characters with uppercase, lowercase, number, and
                 special character. FastAPI also rejects reuse of your last three
                 passwords.
               </p>

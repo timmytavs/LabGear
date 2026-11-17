@@ -1,9 +1,10 @@
 
-"""LabGear Backend Step 54: registration service with parent-first insertion.
+"""LabGear Backend File 140: registration service with selectable questions.
 
-INTERNAL SERVICE ONLY. Public registration must remain disabled until OTP
-email delivery, resend/rate limiting, verification, and safe HTTP responses
-are integrated and tested together.
+Supports the existing fixed Q7/Q2/Q4 registration fields and a future
+security_questions collection (three distinct Q1-Q8 question/answer pairs).
+The current API schema still sends fixed fields; schema/route/frontend changes
+are required before users can choose questions in the interface.
 
 The user row is flushed BEFORE dependent security answers, password history,
 OTP, and audit records. This avoids PostgreSQL foreign-key SQLSTATE 23503
@@ -13,6 +14,7 @@ The method uses one database transaction, commits on success, and rolls back
 on exceptions. Plaintext OTPs are internal delivery data, never API output.
 """
 
+import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -37,6 +39,8 @@ from app.services.captcha_service import verify_registration_captcha
 
 
 REGISTRATION_OTP_PURPOSE = "register"
+SECURITY_QUESTION_CODES = frozenset(f"Q{i}" for i in range(1, 9))
+SECURITY_ANSWER_PATTERN = re.compile(r"[A-Za-z]+(?: [A-Za-z]+)*\Z")
 
 
 class RegistrationRejected(ValueError):
@@ -95,6 +99,63 @@ def _verify_registration_gate(payload: RegistrationRequest) -> None:
     # to actual service callers; tests may mock network verification locally.
     if verify_registration_captcha(payload.captcha_token) is not True:
         raise RegistrationRejected("Registration verification failed.")
+
+
+def _security_question_pairs(
+    payload: RegistrationRequest, *, settings: AuthSettings
+) -> tuple[tuple[str, str], ...]:
+    """Validate three unique bank questions without exposing plaintext answers.
+
+    Accept the existing fields until the other registration/recovery files are
+    updated. A future schema may supply ``security_questions`` as a list of
+    objects with ``question_code`` and ``answer`` attributes (or dictionaries).
+    Exactly one representation is allowed, so the server cannot silently
+    ignore supplied selections or mix new and legacy answers.
+    """
+    selected = getattr(payload, "security_questions", None)
+    legacy_fields = (
+        "security_answer_q7", "security_answer_q2", "security_answer_q4"
+    )
+
+    if selected is None:
+        entries = (
+            ("Q7", getattr(payload, "security_answer_q7", None)),
+            ("Q2", getattr(payload, "security_answer_q2", None)),
+            ("Q4", getattr(payload, "security_answer_q4", None)),
+        )
+    else:
+        if any(getattr(payload, name, None) is not None for name in legacy_fields):
+            raise RegistrationRejected("Choose one security-question format.")
+        if not isinstance(selected, (list, tuple)):
+            raise RegistrationRejected("Select three security questions.")
+        entries = tuple(
+            (
+                item.get("question_code") if isinstance(item, dict)
+                else getattr(item, "question_code", None),
+                item.get("answer") if isinstance(item, dict)
+                else getattr(item, "answer", None),
+            )
+            for item in selected
+        )
+
+    if len(entries) != settings.security_questions_required:
+        raise RegistrationRejected("Select three different security questions.")
+
+    codes: set[str] = set()
+    for code, answer in entries:
+        if not isinstance(code, str) or code not in SECURITY_QUESTION_CODES:
+            raise RegistrationRejected("Invalid security question selection.")
+        if code in codes:
+            raise RegistrationRejected("Security questions must be different.")
+        codes.add(code)
+        if (
+            not isinstance(answer, str)
+            or not 2 <= len(answer) <= 50
+            or SECURITY_ANSWER_PATTERN.fullmatch(answer) is None
+        ):
+            raise RegistrationRejected("Invalid security question answer.")
+
+    return entries
 
 
 def _prepare_records(
@@ -156,11 +217,7 @@ def _prepare_records(
             question_code=code,
             answer_hash=hash_security_answer(answer),
         )
-        for code, answer in (
-            ("Q7", payload.security_answer_q7),
-            ("Q2", payload.security_answer_q2),
-            ("Q4", payload.security_answer_q4),
-        )
+        for code, answer in _security_question_pairs(payload, settings=settings)
     )
     history = PasswordHistory(
         user_id=payload.id_number, password_hash=password_digest
@@ -186,8 +243,8 @@ def register_pending_user(db: Session, payload: RegistrationRequest) -> PendingR
     """Create pending registration atomically after real server-side CAPTCHA.
 
     Not a FastAPI route. Requires an unused request Session and owns its
-    transaction. The caller must not enable this publicly until OTP email
-    delivery, verification, abuse limits, and error handling are integrated.
+    transaction. Existing API protections (CAPTCHA, CSRF, rate limits, OTP
+    verification, and safe HTTP errors) remain the router's responsibility.
     """
     if not isinstance(db, Session):
         raise TypeError("A SQLAlchemy Session is required.")

@@ -1,5 +1,5 @@
 /**
- * LabGear Frontend File 82 — registration client with public CSRF integration.
+ * LabGear Frontend File 146 — selectable security questions with public CSRF.
  * Destination: frontend/src/services/registrationApi.js (REPLACE)
  *
  * Connects to Backend File 81:
@@ -7,6 +7,10 @@
  *   POST /api/auth/register
  *   POST /api/auth/register/verify-otp
  *   POST /api/auth/register/resend-otp
+ *
+ * Supports three distinct user-selected Q1-Q8 registration questions while
+ * retaining the legacy Q7/Q2/Q4 request format for older forms. Never mixes
+ * both formats in the same request.
  *
  * Every public registration POST first fetches a fresh, short-lived signed
  * CSRF token and sends it in the X-CSRF-Token header. The token is bound to
@@ -31,6 +35,10 @@ const PUBLIC_CSRF_TOKEN_PATTERN = /^[A-Za-z0-9_.-]{100,1024}$/;
 const PUBLIC_CSRF_MAX_TTL_SECONDS = 10 * 60;
 const REGISTRATION_ID_PATTERN = /^\d{4}-\d{4}$/;
 const OTP_PATTERN = /^\d{6}$/;
+const SECURITY_QUESTION_CODES = new Set(
+  Array.from({ length: 8 }, (_, index) => `Q${index + 1}`),
+);
+const SECURITY_ANSWER_PATTERN = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
 
 /** An actionable error suitable for displaying beside the React form. */
 export class RegistrationApiError extends Error {
@@ -57,8 +65,88 @@ function readField(values, snakeName, ...alternateNames) {
   return undefined;
 }
 
+/** Validate an answer before sending it to the registration endpoint. */
+function cleanSecurityAnswer(value) {
+  if (typeof value !== "string") {
+    throw new RegistrationApiError(
+      "Enter all three security question answers.",
+    );
+  }
+  const answer = value.trim();
+  if (
+    answer.length < 2 ||
+    answer.length > 50 ||
+    !SECURITY_ANSWER_PATTERN.test(answer)
+  ) {
+    throw new RegistrationApiError(
+      "Each security answer must contain 2–50 letters and single spaces only.",
+    );
+  }
+  return answer;
+}
+
+/** Build exactly one security-question format, never a mixture of both. */
+function buildSecurityQuestionFields(values) {
+  const choices = readField(values, "security_questions", "securityQuestions");
+  const legacyValues = [
+    readField(values, "security_answer_q7", "answerQ7", "answer_q7"),
+    readField(values, "security_answer_q2", "answerQ2", "answer_q2"),
+    readField(values, "security_answer_q4", "answerQ4", "answer_q4"),
+  ];
+
+  if (choices !== undefined && choices !== null) {
+    if (legacyValues.some((value) => value !== undefined && value !== null)) {
+      throw new RegistrationApiError(
+        "Use selected security questions without the old fixed-answer fields.",
+      );
+    }
+    if (!Array.isArray(choices) || choices.length !== 3) {
+      throw new RegistrationApiError(
+        "Choose exactly three security questions.",
+      );
+    }
+
+    const codes = new Set();
+    const security_questions = choices.map((item) => {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        throw new RegistrationApiError(
+          "Choose three valid security questions.",
+        );
+      }
+      const question_code = readField(item, "question_code", "questionCode");
+      if (!SECURITY_QUESTION_CODES.has(question_code)) {
+        throw new RegistrationApiError("Choose a question from Q1 through Q8.");
+      }
+      if (codes.has(question_code)) {
+        throw new RegistrationApiError(
+          "Choose three different security questions.",
+        );
+      }
+      codes.add(question_code);
+      return {
+        question_code,
+        answer: cleanSecurityAnswer(readField(item, "answer")),
+      };
+    });
+
+    return { security_questions };
+  }
+
+  // Compatibility for earlier registration forms; remove this after migration.
+  if (legacyValues.some((value) => value === undefined || value === null)) {
+    throw new RegistrationApiError(
+      "Choose and answer three security questions.",
+    );
+  }
+  return {
+    security_answer_q7: cleanSecurityAnswer(legacyValues[0]),
+    security_answer_q2: cleanSecurityAnswer(legacyValues[1]),
+    security_answer_q4: cleanSecurityAnswer(legacyValues[2]),
+  };
+}
+
 /**
- * Construct exactly the fields accepted by PublicRegistrationRequest.
+ * Construct the registration request, including the selected question format.
  * Unknown form/UI fields are NOT forwarded to the backend. This supports
  * snake_case and camelCase state names without changing the existing UI.
  *
@@ -108,24 +196,7 @@ export function buildRegistrationPayload(values, captchaToken) {
       "class_section_or_unit",
       "classSection",
     ),
-    security_answer_q7: readField(
-      values,
-      "security_answer_q7",
-      "answerQ7",
-      "answer_q7",
-    ),
-    security_answer_q2: readField(
-      values,
-      "security_answer_q2",
-      "answerQ2",
-      "answer_q2",
-    ),
-    security_answer_q4: readField(
-      values,
-      "security_answer_q4",
-      "answerQ4",
-      "answer_q4",
-    ),
+    ...buildSecurityQuestionFields(values),
     privacy_consent: rawConsent === true,
     captcha_token: captcha,
     website: readField(values, "website") ?? "",

@@ -1,5 +1,5 @@
 /**
- * LabGear Frontend File 100 — password recovery signed public CSRF compatibility.
+ * LabGear Frontend File 148 — Q1–Q8 password recovery client compatibility.
  * Destination: frontend/src/services/passwordRecoveryApi.js (REPLACE)
  *
  * Connects to Backend Files 84–86:
@@ -27,10 +27,19 @@
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
-const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9]{5,16}$/;
+const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9]{5,19}$/;
 const ANSWER_PATTERN = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
 const OTP_PATTERN = /^[0-9]{6}$/;
-const QUESTION_CODES = new Set(["Q7", "Q2", "Q4"]);
+const QUESTION_CODES = new Set([
+  "Q1",
+  "Q2",
+  "Q3",
+  "Q4",
+  "Q5",
+  "Q6",
+  "Q7",
+  "Q8",
+]);
 // Match the signed public-token format already accepted by registrationApi.js.
 // The token is opaque to the browser: its signature is verified by FastAPI.
 const PUBLIC_CSRF_TOKEN_PATTERN = /^[A-Za-z0-9_.-]{100,1024}$/;
@@ -263,7 +272,8 @@ function requireMessageResponse(result, action) {
 /**
  * Step 1: Verify username, one assigned security answer, and Google CAPTCHA.
  *
- * questionCode must be exactly Q7, Q2, or Q4.
+ * questionCode must be a Q1–Q8 code actually assigned to the account.
+ * FastAPI verifies that the selected question belongs to this user.
  * The backend sets an HttpOnly recovery challenge cookie when eligible.
  * The response intentionally does not reveal whether the account exists.
  */
@@ -273,7 +283,7 @@ export async function startPasswordRecovery(
 ) {
   if (typeof username !== "string" || !USERNAME_PATTERN.test(username.trim())) {
     throw new PasswordRecoveryApiError(
-      "Enter a valid username containing 6–17 letters or digits.",
+      "Enter a valid username containing 6–20 letters or digits.",
     );
   }
 
@@ -403,7 +413,7 @@ export async function resetPassword(
 ) {
   if (
     typeof newPassword !== "string" ||
-    newPassword.length < 10 ||
+    newPassword.length < 8 ||
     newPassword.length > 64 ||
     !/[A-Z]/.test(newPassword) ||
     !/[a-z]/.test(newPassword) ||
@@ -411,7 +421,7 @@ export async function resetPassword(
     !/[^A-Za-z0-9]/.test(newPassword)
   ) {
     throw new PasswordRecoveryApiError(
-      "Password must contain 10–64 characters, including uppercase, lowercase, a number, and a special character.",
+      "Password must contain 8–64 characters, including uppercase, lowercase, a number, and a special character.",
     );
   }
 

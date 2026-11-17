@@ -12,8 +12,9 @@ All three unsafe public registration routes require the signed, short-lived
 public-form CSRF token issued by File 79 at GET /api/auth/csrf.
 
 Preserves the existing registration workflow, privacy consent, CAPTCHA,
-three security questions, database-backed IP limits, email delivery, and
-one-time registration OTP verification/resend behavior.
+three distinct user-selected Q1-Q8 security questions (and legacy Q7/Q2/Q4
+compatibility), database-backed IP limits, email delivery, and one-time
+registration OTP verification/resend behavior.
 
 The router remains local-development only. The public CSRF token does not
 authenticate a user and does not replace CAPTCHA, rate limits, account
@@ -91,14 +92,18 @@ GENERIC_SECURITY_ERROR = "Registration security is temporarily unavailable."
 
 
 class PublicRegistrationRequest(RegistrationRequest):
-    """Tighten the older registration schema to the course username/answer rules."""
+    """Preserve public username/legacy answer checks and selected Q1-Q8 support.
+
+    RegistrationRequest validates exactly three distinct selected questions
+    and rejects mixing them with the legacy Q7/Q2/Q4 fields.
+    """
 
     @field_validator("username")
     @classmethod
     def validate_public_username(cls, value: str) -> str:
-        if re.fullmatch(r"[A-Za-z][A-Za-z0-9]{5,16}", value) is None:
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9]{5,19}", value) is None:
             raise ValueError(
-                "Username must start with a letter and use 6-17 letters or digits."
+                "Username must start with a letter and use 6-20 letters or digits."
             )
         return value
 
@@ -106,7 +111,12 @@ class PublicRegistrationRequest(RegistrationRequest):
         "security_answer_q7", "security_answer_q2", "security_answer_q4"
     )
     @classmethod
-    def validate_public_answer(cls, value: str) -> str:
+    def validate_public_answer(cls, value: str | None) -> str | None:
+        # New registration sends security_questions instead of the old fields.
+        # Inherited RegistrationRequest validation still rejects explicit nulls,
+        # partial legacy answers, and mixing legacy and selected questions.
+        if value is None:
+            return None
         if (
             not 2 <= len(value) <= 50
             or re.fullmatch(r"[A-Za-z]+(?: [A-Za-z]+)*", value) is None
@@ -393,10 +403,7 @@ def resend_registration(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Please wait before requesting another code.",
-            headers={
-                "Retry-After": str(exc.retry_after_seconds),
-                "Cache-Control": "no-store",
-            },
+            headers={"Retry-After": str(exc.retry_after_seconds), "Cache-Control": "no-store"},
         ) from None
     except RegistrationResendUnavailable:
         # Keep existence and status of accounts confidential.

@@ -95,10 +95,10 @@ class PasswordRecoveryRequest(BaseModel):
 
     username: str = Field(
         min_length=6,
-        max_length=17,
-        pattern=r"^[A-Za-z][A-Za-z0-9]{5,16}$",
+        max_length=20,
+        pattern=r"^[A-Za-z][A-Za-z0-9]{5,19}$",
     )
-    question_code: Literal["Q7", "Q2", "Q4"]
+    question_code: Literal["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"]
     answer: str = Field(
         min_length=2,
         max_length=50,
@@ -146,13 +146,13 @@ class PasswordResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     new_password: str = Field(
-        min_length=10,
+        min_length=8,
         max_length=64,
         repr=False,
         exclude=True,
     )
     confirm_password: str = Field(
-        min_length=10,
+        min_length=8,
         max_length=64,
         repr=False,
         exclude=True,

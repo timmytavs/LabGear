@@ -4,163 +4,147 @@
 **Course:** IT 107 — Information Assurance and Security 1  
 **Academic year:** First Semester, A.Y. 2026–2027  
 **Document:** `docs/SECURITY_REQUIREMENTS.md`  
-**Version:** 1.0  
-**Updated:** November 6, 2026  
-**Overall status:** **In development — not ready for an end-to-end security demonstration**
+**Version:** 2.0  
+**Updated:** November 17, 2026  
+**Overall status:** **Core authentication and selected-question recovery tested; final security evidence and submission audit remain open.**
 
-> **Source of requirements:** *Security1_Student_Handout.docx*, especially Sections 2, 4–14, 16 and 19. The handout defines **13 required protections** in Section 12 and groups them into **11 security rubric criteria (S1–S11)** in Section 19.2. These are different counts; do not confuse them.
+> **Requirements basis:** The project's *Security1 Student Handout* as described in the original documentation, plus the instructor's November 16, 2026 uniform-settings notice. The handout distinguishes **13 mandatory protections** (Section 12) from **11 security rubric criteria, S1–S11** (Section 19.2).
 >
-> **Evidence rule:** “Code prepared,” “import test passed,” “simulation passed,” and “live end-to-end verified” are distinct states. No control is marked fully complete based solely on the existence of a helper function or frontend mockup.
+> **Evidence rule:** **Reported PASS** records a developer's completed test; **observed output** records a console response or screenshot seen during development; **implemented / review needed** is not a test pass. Preserve screenshots and sanitized logs before making a final independent sign-off.
 
 ## 1. System and security scope
 
-LabGear provides role-based laboratory equipment reservations and inventory management for **Students, Instructors, Laboratory Technicians, and Administrators**. Public signup must create **Student** or **Instructor** accounts only. Privileged Technician and Administrator accounts require an authorized provisioning method outside public registration.
+LabGear supports **Students, Instructors, Laboratory Technicians, and Administrators**. Students and instructors can self-register; technician and administrator privileges require controlled provisioning. Features include equipment management, reservation requests and cancellation, technician approval/issuance/returns, damage and repair records, administrative user management, and security monitoring.
 
-**Planned stack:** React/Vite frontend, FastAPI/Pydantic backend, SQLAlchemy, PostgreSQL (`labgear_db`), Argon2id password and security-answer hashing, HMAC-SHA256 OTP digests, AES-256-GCM contact-number encryption, Google reCAPTCHA v2, and Gmail SMTP over TLS.
+**Implemented stack:** React/Vite frontend, FastAPI/Pydantic backend, SQLAlchemy, PostgreSQL (`labgear_db`), password and answer hashing using Argon2id, HMAC-SHA256 OTP digests, AES-256-GCM contact-number encryption, Google reCAPTCHA v2, and Gmail SMTP using a Google App Password over TLS/STARTTLS. Gmail SMTP is an **email transport**, not a dedicated OTP API; FastAPI generates and verifies codes.
 
-**Current implementation boundary:** Backend schema/models, authentication utilities, configuration, CAPTCHA validation, registration preparation, and email transport have been developed. Full protected registration, login, password recovery, sessions, monitoring, and frontend-to-backend integration have **not** been demonstrated end to end.
+**Integration state:** The developer reported successful browser-to-FastAPI-to-PostgreSQL registration, email OTP verification, login, password recovery with a user-selected question, recovery OTP, password reset, and login with the new password. Equipment, reservations, administrative routes, and security tests were also developed and exercised, with supporting details to be consolidated in `docs/TEST_LOG.md`.
 
-## 2. Seeded requirements for LabGear
+## 2. Current instructor-wide security settings (supersede seed formulas)
 
-The project workflow uses **D1 = 9** and **D2 = 6**, consistent with the previously used lockouts, question set, and field lengths. These values should be checked against the **approved, signed student seed sheet** before final submission.
+On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/mod formulas with **uniform class-wide settings**. **Do not use the older 9/6 or 0/9 seed calculations as current policy.** Keep their history, if needed, only in `docs/PERSONAL_SEED_TABLE.md` with a superseded notice.
 
-| Seeded requirement | Handout formula | LabGear working value |
+| Setting | Current requirement | Verification state |
 |---|---|---|
-| Username minimum | `6 + (D1 mod 3)` | **6 characters** |
-| Username maximum | `16 + (D2 mod 5)` | **17 characters** |
-| Password minimum | `8 + (D2 mod 4)` | **10 characters** |
-| Name field maximum | `20 + D2` | **26 characters** |
-| Failures before showing Forgot Password | `2 + (D1 mod 2)` | **3 failures** |
-| Lockout after 3 failures | `15 + D1` | **24 seconds** |
-| Lockout after 6 failures | `30 + 2 × D1` | **48 seconds** |
-| Lockout after 9 failures | `60 + 4 × D1` | **96 seconds** |
-| Email OTP expiration | `3 + (D2 mod 3)` | **3 minutes (180 seconds)** |
-| Idle session timeout | `5 + (D1 mod 5)` | **9 minutes (540 seconds)** |
-| IP block threshold in 10 minutes | `8 + D2` | **14 failed attempts** |
-| Authentication question A | `Q[(D2 mod 8) + 1]` | **Q7 — Elementary school name** |
-| Authentication question B | `Q[((D2 + 3) mod 8) + 1]` | **Q2 — Best friend in elementary school** |
-| Authentication question C | `Q[((D2 + 5) mod 8) + 1]` | **Q4 — Mother's maiden first name** |
+| Username length | **6–20 characters** | Developer reported PASS |
+| Minimum password length | **8 characters** | Developer reported PASS |
+| Maximum length of each name field | **50 characters** | Developer reported PASS |
+| Show Forgot Password link | After **2 failed login attempts** | Developer reported PASS |
+| Account lockout thresholds | At **3, 6, and 9** failed logins | Developer reported PASS |
+| Lockout durations | **15 / 30 / 60 seconds**, respectively | Developer reported PASS |
+| Email OTP expiry | **5 minutes (300 seconds)** | Developer reported PASS |
+| Inactivity/session timeout | **15 minutes (900 seconds)** | Developer reported PASS |
+| Failed-login IP threshold | **10 attempts within 10 minutes** | Developer reported PASS for settings; recheck multi-account live enforcement |
+| IP block duration | **10 minutes** | Developer reported PASS for settings; confirm live enforcement |
+| Recovery questions | User selects **3 distinct questions from Q1–Q8** at registration | Registration/recovery flow reported PASS |
 
-**Other fixed handout rules:** OTP has six digits, **three wrong OTP attempts** cancel the code, new OTPs revoke previous codes, resending waits **60 seconds** and is limited to **three resends within 15 minutes**. An IP exceeding the seeded threshold is blocked for **10 minutes**.
+**Other handout rules retained in the original requirements:** Six-digit OTPs; three wrong OTP attempts invalidate a code; replacement OTP invalidates the previous code; resend cooldown **60 seconds**; no more than **3 resends in 15 minutes**. These specific edge cases still require clearly linked evidence, even when the normal OTP flow passes.
 
-## 3. The 13 mandatory security protections — current status
+**Question handling:** Registration allows any three *different* codes Q1–Q8, records hashed answers, and password recovery accepts only a question/answer belonging to the identified account. The legacy fixed Q7/Q2/Q4 request format remains supported for compatibility. In November 2026, PostgreSQL's outdated `valid_question_code` constraint was identified as Q7/Q2/Q4-only; the developer reported completing the Q1–Q8 constraint update and registration test.
 
-**Legend:** **Prepared / partial** = relevant code or infrastructure exists, but live enforcement is incomplete or not verified. **Pending** = required end-to-end protection has not been established. **Reported configured** = user reported setup/tests; independent audit still needed.
+## 3. The 13 mandatory security protections — implementation and evidence
 
-| # | Handout protection | Required behavior and acceptance test | LabGear status and current evidence | Next action |
+**Status terminology:** **Reported PASS** = developer confirmed a test; **partial / review needed** = relevant implementation exists but no complete test evidence is available here. The table does not claim every protection has passed an independent final audit.
+
+| # | Protection | Required outcome / acceptance check | Current LabGear evidence | Final evidence needed |
 |---|---|---|---|---|
-| **1** | **SQL injection** | Use bound parameters/prepared statements for **every** query; test username payload `' OR '1'='1`. | **Prepared / partial.** SQLAlchemy ORM and parameterized queries appear in registration services; complete route and script audit not performed. | Audit all FastAPI services, dynamic filters and monitoring queries; run injection tests. |
-| **2** | **Cross-site scripting (XSS)** | Escape untrusted text everywhere, including attacker-controlled usernames in admin log views; test `<script>alert(1)</script>`. | **Prepared / partial.** React rendering generally escapes text, but no live dashboard XSS penetration test or unsafe-render audit is documented. | Audit `dangerouslySetInnerHTML`, URLs, attributes, and dashboard output; run XSS tests. |
-| **3** | **Cross-site request forgery (CSRF)** | A secret CSRF token is present on state-changing forms and validated on the **server**; removing it must cause rejection. | **Pending.** No verified CSRF issuance/validation service or protected forms. | Choose session/cookie design; implement server verification on state-changing operations and test rejection. |
-| **4** | **Username enumeration resistance** | Login and Forgot Password behave indistinguishably for unknown username vs wrong credential. | **Pending.** Request schemas exist but live login/recovery handlers are not verified. | Implement generic messages and consistent response behavior; compare both cases. |
-| **5** | **IP blocking** | Count failed attempts across **all usernames** from one IP in 10 minutes; at **14 failures**, block that IP for **10 minutes** server-side. | **Prepared / partial.** `ip_blocks` model exists; configuration includes threshold 14 and 10-minute window, but enforcement has not been demonstrated. | Implement transactional IP tracking and blocking, including proxy/IP trust rules; test across accounts. |
-| **6** | **Session hardening** | Regenerate session identifier after login; HttpOnly and SameSite cookies; nine-minute inactivity timeout, warning one minute earlier; logout invalidates session; browser Back cannot reveal protected data. | **Pending.** Timeouts are configured but no verified complete session lifecycle or protected routes. | Implement secure session design, server-side idle enforcement, cookie policy and logout tests. |
-| **7** | **Password history** | Store only hashes of the last three passwords; reject reuse on password change/reset. | **Prepared / partial.** `password_history` model and `password_was_used()` helper exist; complete reset/change services absent. | Enforce latest-three comparison within authorized reset/change transaction; test reuse. |
-| **8** | **Registration honeypot** | Hidden registration field stays blank for real users; if populated, silently reject automated submission. | **Prepared / partial.** `RegistrationRequest.website` and registration gate reject nonempty input; public registration route not yet enabled/tested. | Integrate hidden field in real React request, verify server rejection and generic response. |
-| **9** | **Activity logging** | Record all Section 13.4 events with Philippine-time interpretation, IP, user agent and contextual details; log is append-only. | **Prepared / partial.** `activity_logs` table/model exists; a pending-registration event is prepared; complete event coverage is missing. | Standardize event names and logging across auth/admin actions; enforce append-only DB rights. |
-| **10** | **Error handling** | Users never see raw Python/SQL tracebacks; detailed errors go to protected server logs. | **Pending.** Some services use generic error messages, but centralized exception handling and disclosure tests have not been verified. | Install safe FastAPI exception handlers and protected logging; test malformed requests. |
-| **11** | **Secret protection** | DB, SMTP, CAPTCHA and encryption secrets never appear in committed files or Git history; `.gitignore` excludes secrets. | **Reported configured / audit pending.** `.env` contains separate OTP/JWT/AES keys and CAPTCHA/SMTP credentials, with user-reported Git-ignore checks. Historical Git audit not performed here. | Audit `git ls-files`, full Git history, screenshots, and logs; provide safe example env file with placeholders. |
-| **12** | **Security headers** | Every applicable page/response sends `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff`. | **Pending.** No verified FastAPI/frontend-server header middleware test. | Implement and inspect browser Network response headers. |
-| **13** | **Encryption at rest** | Encrypt at least one sensitive system field with AES-256 and random IV; only the authorized owner can decrypt it. | **Prepared / partial.** AES-256-GCM contact-number encryption and decryption tested in memory; persisted-data access authorization not yet verified. | Test encrypted database values, user-bound access checks, key safety, and authorized decryption. |
+| **1** | **SQL injection** | Parameterize every query; `' OR '1'='1` must not bypass login or leak SQL errors. | SQLAlchemy ORM and bound queries used in examined services. **Partial / review needed.** | Audit dynamic SQL and test injection through login/search routes. |
+| **2** | **Cross-site scripting (XSS)** | Untrusted input in React/admin logs must display as inert text, not executable HTML. | React escaping is used in normal rendering. **Partial / review needed.** | Test `<script>alert(1)</script>` safely; audit unsafe HTML rendering and links. |
+| **3** | **CSRF** | State-changing endpoints reject missing/invalid tokens on the server. | **Reported PASS** in earlier LabGear security tests; registration/recovery clients request signed CSRF tokens. | Save status-code evidence for both valid and missing/invalid tokens across relevant routes. |
+| **4** | **Username enumeration resistance** | Unknown username and wrong credentials must not reveal whether an account exists. | **Reported PASS** in earlier LabGear login/recovery tests. | Preserve matched messages and response-behavior evidence. |
+| **5** | **IP blocking** | Count failed attempts across usernames; block at **10 failures/10 minutes** for **10 minutes**. | IP-blocking tests were reported PASS before the instructor change; current settings reported PASS. | Repeat live multi-account test using the new threshold, including block expiry. |
+| **6** | **Session hardening** | Fresh authenticated session after password + OTP; HttpOnly/SameSite cookies; **15-minute** idle timeout; logout and Back cannot restore protected access. | Login OTP and authenticated flows reported working; idle setting reported PASS. **Full lifecycle review needed.** | Verify cookie properties, expiry, logout invalidation, Back/direct URL protections. |
+| **7** | **Password history** | Hash current/recent passwords and reject reuse of the last three on change/reset. | **Reported PASS** for password-history security tests; recovery reset also completed. | Attach sanitized negative-case response for reused passwords. |
+| **8** | **Registration honeypot** | Populated hidden field must be refused by backend without creating an account. | **Reported PASS** in prior LabGear security tests; registration gate rejects it. | Capture a negative end-to-end request and database outcome. |
+| **9** | **Activity logging** | Record required security events with time/IP/user agent; log must be append-only and admin-monitored. | Activity logging and security dashboard developed; some event tests reported PASS. **Coverage review needed.** | Verify Section 13.4 event types, log immutability, and admin filters. |
+| **10** | **Safe error handling** | No Python/SQL tracebacks, raw secrets or internal exceptions in browser responses. | Generic FastAPI errors implemented in inspected routes. **Negative-case review needed.** | Test malformed requests and server failures; inspect responses. |
+| **11** | **Secrets protection** | Keep database, Gmail App Password, CAPTCHA, HMAC and AES secrets outside committed files and Git history. | Private `.env` and ignore controls reported configured. **Historical Git audit not evidenced.** | Check tracked files and history without printing secrets in shared evidence. |
+| **12** | **Security headers** | `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff` on applicable responses. | Header middleware is described in later development records. **Full deployment check needed.** | Inspect frontend and API success/error responses. |
+| **13** | **AES-256 encryption at rest** | Sensitive contact field stored as AES-256-GCM ciphertext with fresh IV; only authorized access may decrypt it. | AES-256-GCM encryption service and in-memory tests available. **LabGear database/authorization proof needs review.** | Inspect stored ciphertext/nonce and test authorized vs. unauthorized retrieval. |
 
-**Important:** Section 12 calls these the **13 protections**. Separately, Section 19.2 provides **11 scored security criteria**, not a different 11-protection list.
+**Important distinction:** Completion of the uniform **settings** in Section 2 does **not automatically prove** all 13 attack-resistance and authorization tests above.
 
 ## 4. Security rubric (S1–S11) traceability
 
-| Rubric | Handout criterion | Relevant protections | Current evidence state |
+| Rubric | Instructor criterion | Relevant protection(s) | Current evidence assessment |
 |---|---|---|---|
-| **S1** | Passwords, answers and OTPs are hashed | Password/security-answer/OTP helpers | **Prepared; live database test pending** |
-| **S2** | Sensitive system field encrypted at rest (AES-256) | #13 | **In-memory cryptographic tests passed; database authorization pending** |
-| **S3** | Server-side validation works with JavaScript off | Input validation | **Pydantic schemas exist; full handout-rule audit and API test pending** |
-| **S4** | Account lockout and IP blocking enforced server-side | #5 and login tiers | **Policy configured; enforcement pending** |
-| **S5** | OTP, Change Password, dashboard and dashboard API are protected against direct-URL access | Sessions, RBAC, OTP lifecycle | **Pending** |
-| **S6** | SQL injection and XSS fail, including dashboard log data | #1, #2 | **Testing pending** |
-| **S7** | Server-side CSRF token and CAPTCHA checks | #3 and CAPTCHA | **CAPTCHA service simulated; CSRF pending; live browser integration pending** |
-| **S8** | Session hardening and idle timeout | #6 | **Configuration only; enforcement pending** |
-| **S9** | No username enumeration | #4 | **Pending** |
-| **S10** | No secrets in Git; hidden errors; headers | #10, #11, #12 | **Secrets configured; Git history, errors and headers unverified** |
-| **S11** | Logs append-only; dashboard read-only | #9 and monitoring | **Tables/UI mock prepared; real enforcement pending** |
+| **S1** | Hash passwords, security answers, OTPs | Hashing services / registration | Hashing implementation and user tests reported PASS; save DB evidence. |
+| **S2** | Encrypt sensitive data with AES-256 | #13 | Cryptographic implementation available; DB/authorization evidence needed. |
+| **S3** | Server-side validation even when JS is bypassed | Registration and recovery validation | Updated username, name, password, and Q1–Q8 validation reported PASS; add negative API tests. |
+| **S4** | Account lockouts and IP blocking | #5 plus 3/6/9 tiers | New settings reported PASS; live threshold/expiry evidence should be filed. |
+| **S5** | Protected OTP, change-password, dashboard and APIs | Sessions and role-based access | Functional login, OTP, recovery and role-specific APIs developed; direct-URL denial checks need recorded evidence. |
+| **S6** | Prevent SQL injection and XSS | #1, #2 | Final attack-probe evidence pending. |
+| **S7** | Server-verified CSRF and CAPTCHA | #3 and CAPTCHA | CSRF tests reported PASS; live CAPTCHA flows used; keep negative request evidence. |
+| **S8** | Secure sessions / idle timeout | #6 | 15-minute configuration reported PASS; complete browser/session expiry evidence needed. |
+| **S9** | Resist username enumeration | #4 | Reported PASS; capture comparison evidence. |
+| **S10** | Secrets, safe errors, security headers | #10–#12 | Controls developed; Git-history and full HTTP-response audits pending. |
+| **S11** | Append-only logs and read-only security dashboard | #9 and monitoring | Dashboard/logging implemented; final DB permissions and event-coverage checks pending. |
 
-## 5. Authentication and privacy functionality beyond the 13 protections
+## 5. Authentication and privacy functions beyond the 13 protections
 
-These are also required by the handout and must not be overlooked just because they sit outside Section 12:
+- **Registration (§4):** Student/instructor-only public signup; appropriate user fields, `xxxx-xxxx` ID, duplicates blocked, age 18+ checked server-side, explicit RA 10173 notice/consent, and consent timestamp. Live registration with email OTP was **reported successful**.
+- **Username/name validation (§4):** Username **6–20** (start with a letter, letters/digits only); each name field maximum **50**; retain required title-case, spacing, age and address validation. Settings reported PASS; preserve negative validation outputs in the test log.
+- **Security questions (§5):** Three distinct selected questions Q1–Q8; each answer **2–50 characters**, letters and single spaces, and hashed in storage. PostgreSQL Q1–Q8 compatibility and a full recovery scenario were **reported successful**. Never document real answers.
+- **Email OTP (§6):** Six digits for **registration, login and reset**; purpose-bound and hashed; **5-minute** expiry, three wrong attempts invalidate, single use, previous OTP revoked on resend, **60-second** cooldown and **three resends in 15 minutes**. Normal live delivery/verification was reported successful; edge-case evidence should be filed separately.
+- **CAPTCHA (§7):** Google reCAPTCHA v2, validated on the backend for registration, login and recovery. Client-side checkbox alone must never grant access.
+- **Login (§8):** Password + CAPTCHA followed by email OTP and only then an authenticated session; generic failure messages; **3/6/9** lockout tiers for **15/30/60 seconds**; Forgot Password after **2** failures.
+- **Security alerts (§9):** Send alerts on new lockout tiers and after successful password changes, without exposing secret values or account existence to attackers. Record date/time in Philippine time and relevant IP/user-agent data where required.
+- **Forgot / Change Password (§§10–11):** Identify username, verify one of the account's saved Q1–Q8 questions, send and verify recovery email OTP, authorize password reset, enforce strength and last-three password history. **End-to-end recovery and subsequent login with the new password reported PASS on November 17, 2026** (File 148 fix).
+- **Admin monitoring (§13):** Admin-only dashboard and protected JSON endpoints with summary counts, hourly failures, suspicious IPs, flags, recent events and filtering. Protect admin actions by server-side role checks, not just hidden frontend buttons.
+- **Monitoring script (§14):** Inspect 24-hour activity for (1) one IP above the threshold, (2) username attacked by 3+ IPs, (3) 5+ OTP failures/10 min, and (4) login between 00:00–05:00 Philippine time; deduplicate flags by pattern + target + day. Must not be browser-accessible.
 
-- **Registration (§4):** Approved system-specific fields plus core fields; all browser and server validation; ID in `xxxx-xxxx` format; duplicate ID/username/email refusal; age 18+ recalculated server-side; explicit RA 10173 privacy notice, unchecked consent checkbox and consent timestamp.
-- **Username rule (§4.9):** 6–17 characters for this seed, **letters and digits only, starting with a letter**. A check of current `auth_schemas.py` found that underscores, periods, hyphens and numeric first characters are accepted; **correction needed**.
-- **Name/address rules (§§4.5–4.7):** Title Case, no all-caps, no triple identical letters or double spaces, age and address patterns, and field-specific errors. Current input schemas enforce only part of this; **correction needed**.
-- **Security answers (§5):** The Q7, Q2 and Q4 answers require **2–50 characters, letters and spaces only, no double spaces**, case-normalized before hashing. Current schemas accept 1–200 characters and do not enforce the complete character rule; **correction needed**.
-- **Email OTP (§6):** Used for **registration, login and password reset**, six digits, hashed, purpose-bound, expires after three minutes, three wrong tries revoke it, single use, new issues revoke old ones, 60-second resend cooldown and three resends per 15 minutes. **Database-backed lifecycle still pending**.
-- **CAPTCHA (§7):** Server verified on **Registration, Login and Forgot Password**. Registration verification code was prepared; live forms and the other two flows are pending.
-- **Login (§8):** Password + CAPTCHA, then email OTP, then session creation; generic credential errors; progressive 24/48/96-second lockouts at 3/6/9 failures. Reset counter after successful full login.
-- **Security alerts (§9):** Alert at each newly reached account lockout tier (once per tier), and after successful password change. Include failed count, Philippine time, IP, user-agent and reset guidance; do not expose attempted password or alert status to attackers.
-- **Forgot / Change Password (§§10–11):** Security question selection and matching response, reset OTP, protected single-use reset authorization, password strength, and rejection of last three passwords.
-- **Admin monitoring (§13):** Admin-only read-only dashboard plus protected JSON data endpoint, six types of summary counts, failed-logins-per-hour chart, top five IPs, security flags, and 50 recent events with filters; refresh every 60 seconds; log dashboard views and denied access.
-- **Monitoring script (§14):** Check last 24h activity and flag (1) IP over threshold, (2) one username targeted by 3+ IPs, (3) 5+ failed OTPs in 10 minutes, and (4) successful login 00:00–05:00 Philippine time. Deduplicate same pattern + target + day. Must **not** be browser-accessible.
+## 6. Resolved changes and remaining review items
 
-## 6. Important integration gaps identified during documentation
-
-| Priority | Current project issue | Why it matters | Recommended development action |
-|---|---|---|---|
-| **High** | **Step 51 delivered but not yet user-confirmed** | The registration ORM previously used `purpose='registration'`, but LabGear's database expects `register`. | Complete and record Step 51's read-only checks before implementing verification. |
-| **High** | **Pydantic OTP purpose mismatch** | `OTPVerifyRequest` / `OTPResendRequest` currently accept `registration`, `login`, `recovery` rather than DB values `register`, `login`, `reset`. | Align schemas with DB and email OTP HMAC contexts before exposing endpoints. |
-| **High** | **Registration input validators do not fully match §4–5** | Tests may pass syntactically while accepting names/usernames/answers that violate the handout. | Update validators and negative tests before public registration. |
-| **High** | **No complete OTP verification/resend transaction yet** | No proof of expiration, attempt lockout, replay resistance, account activation or resend throttling. | Implement with row-level locking and persistent database state. |
-| **High** | **Registration delivery failure and rate-limiting lifecycle unresolved** | A pending user/OTP could exist even if email delivery fails; abuse/spam still needs controls. | Design explicit persisted send state, safe retries, rate limits and expiration handling. |
-| **High** | **Activity event names differ from handout** | Earlier service prepares `registration_pending`; §13.4 expects `REGISTERED`, plus all other named events. | Standardize event vocabulary, audit actor/IP/user-agent collection. |
-| **High** | **CSRF, real session hardening, user enumeration defense, headers and monitoring incomplete** | These remain mandatory protections and security rubric criteria. | Implement and penetration-test before demo. |
-| **Medium** | **Email body handout wording and per-purpose templates** | §6.3 requires correct purpose, expiry and specific unauthorized-request guidance. | Review mail templates for registration, login and reset; verify content. |
-| **Medium** | **Successful simulated tests are not live integration proof** | Unit tests do not establish browser-to-API-to-PostgreSQL security. | Capture end-to-end evidence and expected failure cases as features are completed. |
-
-## 7. Tests and evidence to collect
-
-Do not save actual passwords, OTPs, secret keys, raw reset tokens or private `.env` values in screenshots or documentation.
-
-| Evidence ID | Minimum verification | Current documented status |
+| Area | Historical issue or change | Updated status |
 |---|---|---|
-| **E01** | Read-only PostgreSQL schema and ORM registry checks | **User-reported PASS** for previous backend schema steps. |
-| **E02** | Argon2id password, hashed security answers and HMAC OTP tests | **User-reported PASS** in security helper/registration tests. |
-| **E03** | AES-GCM contact-number encryption/decryption | **User-reported PASS, in memory**. |
-| **E04** | CAPTCHA success/invalid/hostname/outage tests | **User-reported simulated PASS**; live browser flow unverified. |
-| **E05** | Gmail SMTP encrypted connection and login | **User-reported PASS**. |
-| **E06** | Real registration OTP email arrives in inbox | **User-reported PASS** at Step 50; not a live account OTP. |
-| **E07** | Registration OTP accepts once, rejects wrong/expired/revoked and activates only after valid OTP | **Pending**. |
-| **E08** | Resend limited to 3/15min with 60-second cooldown; old code revoked | **Pending**. |
-| **E09** | Successful login requires both password and OTP; direct URL/endpoint bypass fails | **Pending**. |
-| **E10** | Lockout at 3/6/9 failures; cross-account IP block after 14/10min | **Pending**. |
-| **E11** | CSRF missing/invalid token rejected and XSS/SQLi probes fail | **Pending**. |
-| **E12** | Secure cookies, 9-minute idle timeout, logout and browser Back test | **Pending**. |
-| **E13** | Last-three password reuse refused; security alert email delivered | **Pending**. |
-| **E14** | Admin-only read-only dashboard, protected API, append-only events | **Pending**. |
-| **E15** | Monitoring script's four patterns, deduplication, non-web accessibility | **Pending**. |
-| **E16** | Git history, `.gitignore`, safe error responses, security headers | **Pending full audit**. |
+| Student-number seeds | Earlier documents used conflicting D1/D2 values and obsolete limits. | **Superseded** by instructor's November 16 class-wide values. |
+| Registration and OTP | Earlier draft described OTP purpose/activation as unfinished. | Full live registration + email OTP flow **reported PASS**; keep specific expiry/replay/resend negative tests in the log. |
+| Security-question selection | Earlier fixed Q7/Q2/Q4 UI, schema, service and DB constraints. | Files **140–147** introduced Q1–Q8 compatibility; PostgreSQL constraint update **reported DONE**. |
+| Password recovery client | `passwordRecoveryApi.js` still rejected Q1/Q8 client-side before an API call. | **File 148 corrected** question set, username max and password minimum; developer reported successful recovery and password reset. |
+| Revised settings | Earlier code/docs cited 3-minute OTP, 9-minute idle, 14-IP threshold, and 24/48/96 lockouts. | Developer reports all instructor-wide settings now **PASS**. |
+| Admin, equipment and reservations | Earlier draft treated these as mocks or unimplemented. | Backend routes/frontends were built and tested during later development; collate precise test IDs in `TEST_LOG.md`. |
+| Security sign-off | Original document had only preparatory test evidence. | Still requires sanitized attack probes, session and authorization edge cases, Git-history audit, and final evidence organization. |
 
-### Local read-only verification commands already used
+## 7. Verification evidence register
 
-From `C:\Users\Administrator\Documents\LabGear\backend` in its activated virtual environment:
+Do **not** save passwords, OTP values, security answers, SMTP App Passwords, private keys, session cookies or full private `.env` values in screenshots or documents.
 
-```powershell
-python -m app.models.registry
-python verify_auth_security_schema.py
-python verify_inventory_schema.py
-python verify_reservation_schema.py
-python test_registration_email_delivery.py
-```
+| Evidence ID | Minimum verification | Updated status / action |
+|---|---|---|
+| **E01** | PostgreSQL schema and ORM registry | Earlier read-only schema checks **reported PASS**. |
+| **E02** | Hashed password, question answers, OTP digest | Helper tests **reported PASS**; retain sanitized DB proof. |
+| **E03** | AES-GCM encryption/decryption, DB ciphertext and access | In-memory checks **reported PASS**; LabGear live access checks pending evidence. |
+| **E04** | CAPTCHA valid/invalid/hostname/outage | Earlier simulated tests **reported PASS**; archive live/negative checks. |
+| **E05** | Gmail SMTP connection/authentication | **Reported live PASS**. |
+| **E06** | Registration email OTP delivered and accepted | **Reported live PASS** during later integrated registration. |
+| **E07** | OTP single-use, expiry at 5 min, three failures and revocation | Normal flow PASS reported; **negative cases need recorded evidence**. |
+| **E08** | Resend: 60-sec delay, 3/15-min limit, old OTP invalid | **Retest/document specific edge cases**. |
+| **E09** | Password + OTP login; inaccessible protected page before OTP | Login **reported PASS**; direct-URL bypass checks need attachment. |
+| **E10** | 3/6/9 lockouts and IP 10 failures/10 min | Policy **reported PASS**; document fresh multi-user enforcement and expiry. |
+| **E11** | CSRF rejection, XSS and SQLi probes | CSRF **reported PASS**; XSS/SQLi final probes need evidence. |
+| **E12** | Cookies, 15-min idle, logout and browser Back | Configuration **reported PASS**; final browser/session evidence needed. |
+| **E13** | Password-history refusal; email alerts | Password history and alert workflows **reported PASS**; retain negative-case proof. |
+| **E14** | Admin-only dashboard, log immutability | Features implemented; complete authz/DB evidence needed. |
+| **E15** | Four-pattern CLI monitoring and deduplication | Monitoring developed; attach final run output. |
+| **E16** | Secret Git audit, safe errors, frontend/backend headers | **Final repository and HTTP-response review needed**. |
+| **E17** | Registration with chosen Q1–Q8, DB records and Gmail OTP | **Reported live PASS, Nov 17, 2026**. |
+| **E18** | Forgot Password, selected question, OTP, reset, new login | **Reported live PASS, Nov 17, 2026**; File 148 resolved client validation. |
 
-The email test defaults to **DRY RUN**; do **not** use `--send` casually. Never run a registration or reset test against real personal accounts without explicit approval.
+**Read-only checks already used:** `python -m app.models.registry`, `python verify_auth_security_schema.py`, `python verify_inventory_schema.py`, and `python verify_reservation_schema.py` from the backend environment. Relevant newer validation included examining the `user_security_answers` constraint and checking `load_auth_settings().security_questions_required == 3` (confirmed output). Do not rerun email-sending tests casually or expose inbox codes.
 
-## 8. Required IT 107 submission documents and checkpoints
+## 8. IT 107 submission documents and checkpoints
 
-The handout additionally requires: approved **System Proposal**, **seed table on the first documentation page**, **Threat Model** (one row per protection), **Design Decisions** addressing each “Your call,” **Privacy Note** under RA 10173, **Error Message Mapping**, **Development Journal** (weekly), Git history with **at least 30 commits over at least four weeks**, an SQL dump with **at least five test records**, and test accounts with accessible inboxes.
+The original handout summary in this file lists additional deliverables: approved **System Proposal**; original seed table with an explanation that it has been **superseded** by uniform rules; **Threat Model** (13 protections); **Design Decisions**; RA 10173 **Privacy Note**; **Error Message Mapping**; weekly **Development Journal**; at least **30 Git commits over four weeks**; SQL dump with at least **five test records**; and test accounts with accessible inboxes. These are **handout-listed deliverables**, even if the current documentation-editing scope covers only four existing Markdown files. Verify the current instructor's submission instructions before excluding any item.
 
-Checkpoint expectations are cumulative: (1) approved proposal/seed/Git/test email; (2) registration, consent, OTP, CAPTCHA; (3) full login/recovery/alerts/logs; (4) **13 protections**, dashboard, and monitoring script. **No checkpoint is claimed complete by this document.**
+**Checkpoint focus:** approved project/setup → registration/consent/OTP/CAPTCHA → login/recovery/alerts/logs → all 13 protections, admin monitoring, CLI script, demonstrable functional reservation workflows. A final completion claim requires captured evidence, not merely a configuration check or DONE message.
 
 ## 9. Maintenance and approval
 
-- **Owner:** LabGear development team.
-- **Status updates:** Change *Pending* to *Prepared / partial* when code/tests exist; change to *Verified end to end* **only after** a recorded live verification with evidence.
-- **Documentation sources:** Instructor handout; LabGear project overview; delivered backend source snapshots; user-reported test outputs. Confirm actual Windows files before signing off any deliverable.
-- **Next step:** Continue documentation with `docs/DATABASE_DICTIONARY.md` after reviewing this file; later resume backend at **Step 51 verification**, followed by the database-backed OTP service.
+- **Maintained by:** LabGear development team.
+- **Source hierarchy:** Current instructor notice > obsolete seed formulas; current application and database evidence > older draft statuses; user-reported test outcomes should remain explicitly labeled.
+- **Documentation sequence:** Update this file first, then `docs/TEST_LOG.md`, `docs/PERSONAL_SEED_TABLE.md`, and `docs/THREAT_MODEL.md`, one existing file at a time.
+- **Final review:** Confirm the deployed settings and APIs, archive sanitized test evidence, verify Git history and required submission artifacts, then mark the final rubric complete.
 
 ---
 
-**Confidentiality note:** This document intentionally contains no email addresses, passwords, personal IDs, OTPs, private tokens or encryption keys.
+**Confidentiality note:** No real email addresses, account identifiers, passwords, OTPs, answers, private session tokens or encryption keys should be included in this document.
