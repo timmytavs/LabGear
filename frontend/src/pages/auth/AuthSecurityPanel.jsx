@@ -535,7 +535,7 @@ export default function AuthSecurityPanel({
 
       if (result.otpRequired !== true) {
         throw new RecoveryApiError(
-          "FastAPI did not confirm the recovery OTP step.",
+          "Server did not confirm the recovery OTP step.",
         );
       }
 
@@ -622,7 +622,7 @@ export default function AuthSecurityPanel({
 
       if (result.resetRequired !== true) {
         throw new RecoveryApiError(
-          "FastAPI did not authorize the password-reset step.",
+          "Server did not authorize the password-reset step.",
         );
       }
 
@@ -1162,7 +1162,7 @@ export default function AuthSecurityPanel({
 
               <p className="lgas-hint">
                 Use 8–64 characters with uppercase, lowercase, number, and
-                special character. FastAPI also rejects reuse of your last three
+                special character. Server also rejects reuse of your last three
                 passwords.
               </p>
 

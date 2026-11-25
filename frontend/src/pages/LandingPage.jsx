@@ -196,8 +196,8 @@ function AuthenticatedDashboard({ user, onSignOut, signingOut, error }) {
               {isDashboard
                 ? `Signed in as ${user.username}. Manage laboratory equipment and reservations from one organized workspace.`
                 : activePage === "equipment"
-                  ? "Browse the current equipment catalog from PostgreSQL. Reservation requests will be connected in a later step."
-                  : `${activeName} is not connected to live FastAPI data yet.`}
+                  ? "Browse the current equipment catalog from Database. Reservation requests will be connected in a later step."
+                  : `${activeName} is not connected to live Server data yet.`}
             </p>
           </div>
           <div
@@ -307,7 +307,7 @@ function AuthenticatedDashboard({ user, onSignOut, signingOut, error }) {
             </div>
             <h2>{activeName}</h2>
             <p>
-              This module is still being connected to FastAPI and PostgreSQL. No
+              This module is still being connected to Server and Database. No
               fictional preview records are displayed as your real records.
             </p>
             <button
@@ -623,7 +623,7 @@ function LandingPage({ apiStatus }) {
 
           <p className="landing-demo-note">
             Equipment illustrations are previews. Actual inventory and
-            availability will be retrieved from PostgreSQL.
+            availability will be retrieved from Database.
           </p>
         </section>
 

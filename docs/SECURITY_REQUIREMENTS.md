@@ -4,9 +4,9 @@
 **Course:** IT 107 — Information Assurance and Security 1  
 **Academic year:** First Semester, A.Y. 2026–2027  
 **Document:** `docs/SECURITY_REQUIREMENTS.md`  
-**Version:** 2.0  
-**Updated:** November 17, 2026  
-**Overall status:** **Core authentication and selected-question recovery tested; final security evidence and submission audit remain open.**
+**Version:** 2.1  
+**Updated:** November 18, 2026  
+**Overall status:** **Core authentication, selected-question recovery, and 3/6/9 account lockouts demonstrated; final security evidence and submission audit remain open.**
 
 > **Requirements basis:** The project's *Security1 Student Handout* as described in the original documentation, plus the instructor's November 16, 2026 uniform-settings notice. The handout distinguishes **13 mandatory protections** (Section 12) from **11 security rubric criteria, S1–S11** (Section 19.2).
 >
@@ -29,9 +29,9 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 | Username length | **6–20 characters** | Developer reported PASS |
 | Minimum password length | **8 characters** | Developer reported PASS |
 | Maximum length of each name field | **50 characters** | Developer reported PASS |
-| Show Forgot Password link | After **2 failed login attempts** | Developer reported PASS |
-| Account lockout thresholds | At **3, 6, and 9** failed logins | Developer reported PASS |
-| Lockout durations | **15 / 30 / 60 seconds**, respectively | Developer reported PASS |
+| Show Forgot Password link | After **2 failed login attempts** | Frontend behavior reported PASS; File 150/151 uses local rejected-response tracking, not authoritative account state |
+| Account lockout thresholds | At **3, 6, and 9** failed logins | **Observed PostgreSQL PASS**: `login_account_lockout` events at 3, 6, and 9 |
+| Lockout durations | **15 / 30 / 60 seconds**, respectively | **Observed PostgreSQL PASS**: events recorded 15, 30, and 60 seconds |
 | Email OTP expiry | **5 minutes (300 seconds)** | Developer reported PASS |
 | Inactivity/session timeout | **15 minutes (900 seconds)** | Developer reported PASS |
 | Failed-login IP threshold | **10 attempts within 10 minutes** | Developer reported PASS for settings; recheck multi-account live enforcement |
@@ -41,6 +41,8 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 **Other handout rules retained in the original requirements:** Six-digit OTPs; three wrong OTP attempts invalidate a code; replacement OTP invalidates the previous code; resend cooldown **60 seconds**; no more than **3 resends in 15 minutes**. These specific edge cases still require clearly linked evidence, even when the normal OTP flow passes.
 
 **Question handling:** Registration allows any three *different* codes Q1–Q8, records hashed answers, and password recovery accepts only a question/answer belonging to the identified account. The legacy fixed Q7/Q2/Q4 request format remains supported for compatibility. In November 2026, PostgreSQL's outdated `valid_question_code` constraint was identified as Q7/Q2/Q4-only; the developer reported completing the Q1–Q8 constraint update and registration test.
+
+**Account lockout evidence (November 18, 2026):** After installing Backend File 149, the developer shared PostgreSQL output with `users.failed_login_attempts = 9`, a future `users.locked_until`, and `lockout_status = LOCKED`. A second screenshot of `activity_logs` showed lockout records at **3/15 seconds**, **6/30 seconds**, and **9/60 seconds** (plus an earlier 3/15 event). Frontend Files 150–151 displayed a disabled Login button and countdown; the developer confirmed Forgot Password was unclickable during the visible countdown and that the countdown survived a page refresh in the **same browser tab**. This local UI countdown is **not synchronized with the backend across devices**; it is not the server-side enforcement mechanism.
 
 ## 3. The 13 mandatory security protections — implementation and evidence
 
@@ -53,10 +55,10 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 | **3** | **CSRF** | State-changing endpoints reject missing/invalid tokens on the server. | **Reported PASS** in earlier LabGear security tests; registration/recovery clients request signed CSRF tokens. | Save status-code evidence for both valid and missing/invalid tokens across relevant routes. |
 | **4** | **Username enumeration resistance** | Unknown username and wrong credentials must not reveal whether an account exists. | **Reported PASS** in earlier LabGear login/recovery tests. | Preserve matched messages and response-behavior evidence. |
 | **5** | **IP blocking** | Count failed attempts across usernames; block at **10 failures/10 minutes** for **10 minutes**. | IP-blocking tests were reported PASS before the instructor change; current settings reported PASS. | Repeat live multi-account test using the new threshold, including block expiry. |
-| **6** | **Session hardening** | Fresh authenticated session after password + OTP; HttpOnly/SameSite cookies; **15-minute** idle timeout; logout and Back cannot restore protected access. | Login OTP and authenticated flows reported working; idle setting reported PASS. **Full lifecycle review needed.** | Verify cookie properties, expiry, logout invalidation, Back/direct URL protections. |
+| **6** | **Session hardening** | Fresh authenticated session after password + OTP; HttpOnly/SameSite cookies; **15-minute** idle timeout; logout and Back cannot restore protected access. | Login OTP and authenticated flows reported working; `/api/auth/me` was **observed 200 after login and 401 when signed out**. Idle setting reported PASS; full lifecycle review needed. | Verify cookie properties, expiry, logout invalidation, Back/direct URL protections. |
 | **7** | **Password history** | Hash current/recent passwords and reject reuse of the last three on change/reset. | **Reported PASS** for password-history security tests; recovery reset also completed. | Attach sanitized negative-case response for reused passwords. |
 | **8** | **Registration honeypot** | Populated hidden field must be refused by backend without creating an account. | **Reported PASS** in prior LabGear security tests; registration gate rejects it. | Capture a negative end-to-end request and database outcome. |
-| **9** | **Activity logging** | Record required security events with time/IP/user agent; log must be append-only and admin-monitored. | Activity logging and security dashboard developed; some event tests reported PASS. **Coverage review needed.** | Verify Section 13.4 event types, log immutability, and admin filters. |
+| **9** | **Activity logging** | Record required security events with time/IP/user agent; log must be append-only and admin-monitored. | **Observed PostgreSQL `login_account_lockout` events with failure count and duration**; remaining event types and audit permissions need review. | Verify Section 13.4 event types, log immutability, and admin filters. |
 | **10** | **Safe error handling** | No Python/SQL tracebacks, raw secrets or internal exceptions in browser responses. | Generic FastAPI errors implemented in inspected routes. **Negative-case review needed.** | Test malformed requests and server failures; inspect responses. |
 | **11** | **Secrets protection** | Keep database, Gmail App Password, CAPTCHA, HMAC and AES secrets outside committed files and Git history. | Private `.env` and ignore controls reported configured. **Historical Git audit not evidenced.** | Check tracked files and history without printing secrets in shared evidence. |
 | **12** | **Security headers** | `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff` on applicable responses. | Header middleware is described in later development records. **Full deployment check needed.** | Inspect frontend and API success/error responses. |
@@ -71,7 +73,7 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 | **S1** | Hash passwords, security answers, OTPs | Hashing services / registration | Hashing implementation and user tests reported PASS; save DB evidence. |
 | **S2** | Encrypt sensitive data with AES-256 | #13 | Cryptographic implementation available; DB/authorization evidence needed. |
 | **S3** | Server-side validation even when JS is bypassed | Registration and recovery validation | Updated username, name, password, and Q1–Q8 validation reported PASS; add negative API tests. |
-| **S4** | Account lockouts and IP blocking | #5 plus 3/6/9 tiers | New settings reported PASS; live threshold/expiry evidence should be filed. |
+| **S4** | Account lockouts and IP blocking | #5 plus 3/6/9 tiers | **Observed account lockout events: 3→15 s, 6→30 s, 9→60 s** and future `users.locked_until` (Nov 18). **IP threshold 10/10 min** still needs fresh cross-account evidence. |
 | **S5** | Protected OTP, change-password, dashboard and APIs | Sessions and role-based access | Functional login, OTP, recovery and role-specific APIs developed; direct-URL denial checks need recorded evidence. |
 | **S6** | Prevent SQL injection and XSS | #1, #2 | Final attack-probe evidence pending. |
 | **S7** | Server-verified CSRF and CAPTCHA | #3 and CAPTCHA | CSRF tests reported PASS; live CAPTCHA flows used; keep negative request evidence. |
@@ -87,7 +89,7 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 - **Security questions (§5):** Three distinct selected questions Q1–Q8; each answer **2–50 characters**, letters and single spaces, and hashed in storage. PostgreSQL Q1–Q8 compatibility and a full recovery scenario were **reported successful**. Never document real answers.
 - **Email OTP (§6):** Six digits for **registration, login and reset**; purpose-bound and hashed; **5-minute** expiry, three wrong attempts invalidate, single use, previous OTP revoked on resend, **60-second** cooldown and **three resends in 15 minutes**. Normal live delivery/verification was reported successful; edge-case evidence should be filed separately.
 - **CAPTCHA (§7):** Google reCAPTCHA v2, validated on the backend for registration, login and recovery. Client-side checkbox alone must never grant access.
-- **Login (§8):** Password + CAPTCHA followed by email OTP and only then an authenticated session; generic failure messages; **3/6/9** lockout tiers for **15/30/60 seconds**; Forgot Password after **2** failures.
+- **Login (§8):** Password + CAPTCHA followed by email OTP and only then an authenticated session; generic failure messages; **3/6/9** lockout tiers for **15/30/60 seconds**. **Observed Nov 18:** PostgreSQL records all three tiers with correct durations and `locked_until` for an active lock. Files 150–151 show a local countdown, disable Login and Forgot Password while that countdown is active, and restore the countdown after refreshing the same tab. Forgot Password appears after **2** locally tracked rejected submissions. The browser timer is not the server-side lockout and is not authoritative across browsers/devices; the recovery endpoint has not been shown to enforce the same restriction.
 - **Security alerts (§9):** Send alerts on new lockout tiers and after successful password changes, without exposing secret values or account existence to attackers. Record date/time in Philippine time and relevant IP/user-agent data where required.
 - **Forgot / Change Password (§§10–11):** Identify username, verify one of the account's saved Q1–Q8 questions, send and verify recovery email OTP, authorize password reset, enforce strength and last-three password history. **End-to-end recovery and subsequent login with the new password reported PASS on November 17, 2026** (File 148 fix).
 - **Admin monitoring (§13):** Admin-only dashboard and protected JSON endpoints with summary counts, hourly failures, suspicious IPs, flags, recent events and filtering. Protect admin actions by server-side role checks, not just hidden frontend buttons.
@@ -101,7 +103,9 @@ On **November 16, 2026**, the instructor replaced Section 2.2's personal D1/D2/m
 | Registration and OTP | Earlier draft described OTP purpose/activation as unfinished. | Full live registration + email OTP flow **reported PASS**; keep specific expiry/replay/resend negative tests in the log. |
 | Security-question selection | Earlier fixed Q7/Q2/Q4 UI, schema, service and DB constraints. | Files **140–147** introduced Q1–Q8 compatibility; PostgreSQL constraint update **reported DONE**. |
 | Password recovery client | `passwordRecoveryApi.js` still rejected Q1/Q8 client-side before an API call. | **File 148 corrected** question set, username max and password minimum; developer reported successful recovery and password reset. |
-| Revised settings | Earlier code/docs cited 3-minute OTP, 9-minute idle, 14-IP threshold, and 24/48/96 lockouts. | Developer reports all instructor-wide settings now **PASS**. |
+| Revised settings | Earlier code/docs cited 3-minute OTP, 9-minute idle, 14-IP threshold, and 24/48/96 lockouts. | Uniform settings reported PASS; **account lockout durations now directly evidenced by PostgreSQL** (Nov 18). |
+| Backend lockout persistence | Earlier service tracked lockouts in audit events but `users.locked_until` could remain NULL. | **File 149** persists active lock expiration and increments failures for recognized accounts; screenshots showed 9 failures, an active lock, and 3/6/9-tier events. |
+| Lockout UI and refresh | Previously no countdown; local React state reset on refresh. | **Files 150–151** add a local countdown and same-tab `sessionStorage` persistence. Developer confirmed countdown, Login disabled, Forgot Password disabled during countdown, and refresh recovery. The displayed timer is **not server-synchronized**. |
 | Admin, equipment and reservations | Earlier draft treated these as mocks or unimplemented. | Backend routes/frontends were built and tested during later development; collate precise test IDs in `TEST_LOG.md`. |
 | Security sign-off | Original document had only preparatory test evidence. | Still requires sanitized attack probes, session and authorization edge cases, Git-history audit, and final evidence organization. |
 
@@ -120,7 +124,7 @@ Do **not** save passwords, OTP values, security answers, SMTP App Passwords, pri
 | **E07** | OTP single-use, expiry at 5 min, three failures and revocation | Normal flow PASS reported; **negative cases need recorded evidence**. |
 | **E08** | Resend: 60-sec delay, 3/15-min limit, old OTP invalid | **Retest/document specific edge cases**. |
 | **E09** | Password + OTP login; inaccessible protected page before OTP | Login **reported PASS**; direct-URL bypass checks need attachment. |
-| **E10** | 3/6/9 lockouts and IP 10 failures/10 min | Policy **reported PASS**; document fresh multi-user enforcement and expiry. |
+| **E10** | 3/6/9 account lockouts and IP 10 failures/10 min | **Account lockout PASS, observed PostgreSQL:** events at 3→15 s, 6→30 s, 9→60 s; 9 failures and future `locked_until`. **IP 10/10-min multi-user enforcement and block expiry remain to be evidenced.** |
 | **E11** | CSRF rejection, XSS and SQLi probes | CSRF **reported PASS**; XSS/SQLi final probes need evidence. |
 | **E12** | Cookies, 15-min idle, logout and browser Back | Configuration **reported PASS**; final browser/session evidence needed. |
 | **E13** | Password-history refusal; email alerts | Password history and alert workflows **reported PASS**; retain negative-case proof. |
@@ -129,6 +133,20 @@ Do **not** save passwords, OTP values, security answers, SMTP App Passwords, pri
 | **E16** | Secret Git audit, safe errors, frontend/backend headers | **Final repository and HTTP-response review needed**. |
 | **E17** | Registration with chosen Q1–Q8, DB records and Gmail OTP | **Reported live PASS, Nov 17, 2026**. |
 | **E18** | Forgot Password, selected question, OTP, reset, new login | **Reported live PASS, Nov 17, 2026**; File 148 resolved client validation. |
+| **E19** | Database account lockout tiers and audit log | **Observed Nov 18 PostgreSQL:** `users.failed_login_attempts = 9`, future `locked_until`, `LOCKED`; `activity_logs` records 3/15, 6/30, 9/60 (and earlier 3/15) — **PASS** for these observations. |
+| **E20** | Login UI countdown, control lock, and reload | **Observed Nov 18** countdown with Login visually disabled; developer confirmed Forgot Password could not be clicked and same-tab countdown survived refresh after File 151. **Exact backend synchronization and recovery endpoint restriction not verified.** |
+
+**Read-only lockout evidence query used November 18, 2026** (use a fictional test account when submitting screenshots):
+
+```sql
+SELECT created_at,
+       details->>'failed_attempts' AS failed_attempts,
+       details->>'duration_seconds' AS lockout_seconds
+FROM public.activity_logs
+WHERE event_type = 'login_account_lockout'
+ORDER BY created_at DESC
+LIMIT 10;
+```
 
 **Read-only checks already used:** `python -m app.models.registry`, `python verify_auth_security_schema.py`, `python verify_inventory_schema.py`, and `python verify_reservation_schema.py` from the backend environment. Relevant newer validation included examining the `user_security_answers` constraint and checking `load_auth_settings().security_questions_required == 3` (confirmed output). Do not rerun email-sending tests casually or expose inbox codes.
 
@@ -142,7 +160,7 @@ The original handout summary in this file lists additional deliverables: approve
 
 - **Maintained by:** LabGear development team.
 - **Source hierarchy:** Current instructor notice > obsolete seed formulas; current application and database evidence > older draft statuses; user-reported test outcomes should remain explicitly labeled.
-- **Documentation sequence:** Update this file first, then `docs/TEST_LOG.md`, `docs/PERSONAL_SEED_TABLE.md`, and `docs/THREAT_MODEL.md`, one existing file at a time.
+- **Documentation sequence:** This November 18 update documents Files 149–151; next update `docs/TEST_LOG.md` using the supplied test results. The other two documentation files remain in their earlier completed state unless new evidence requires a revision.
 - **Final review:** Confirm the deployed settings and APIs, archive sanitized test evidence, verify Git history and required submission artifacts, then mark the final rubric complete.
 
 ---

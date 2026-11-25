@@ -1,12 +1,16 @@
 /**
- * LabGear Frontend File 145 — selectable security questions and uniform settings.
+ * LabGear Frontend File 156 — live duplicate ID warning (preserves File 153).
  * Destination: frontend/src/pages/auth/RegisterPanel.jsx (REPLACE).
- * Preserves the existing three-step registration, CAPTCHA and OTP flow.
- * Selected questions require the matching registrationApi.js request mapping.
- * Requires File 58: src/services/registrationApi.js.
+ * Preserves three-step registration, CAPTCHA, Gmail OTP, honeypot and Q1–Q8.
+ * Uses File 155's signed-CSRF ID check after a complete ID is entered and
+ * briefly idle (or on blur), never on every keystroke.
+ * Caches per-ID answers in this component to respect the backend's strict
+ * 8-lookups/15-minute IP rate limit; a final registration POST still checks
+ * uniqueness authoritatively. Does not create accounts or send OTPs on lookup.
+ * Requires File 155: src/services/registrationApi.js.
  * Real reCAPTCHA v2 needs VITE_LABGEAR_RECAPTCHA_SITE_KEY in frontend/.env.local.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -22,6 +26,7 @@ import {
 import "../../styles/register.css";
 import PrivacyNotice from "./PrivacyNotice";
 import {
+  checkRegistrationIdAvailability,
   registerAccount,
   resendRegistrationOtp,
   verifyRegistrationOtp,
@@ -250,6 +255,22 @@ const SECURITY_QUESTIONS = [
 ];
 
 const SECURITY_ANSWER_PATTERN = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
+const DUPLICATE_ID_MESSAGE =
+  "This ID number already exists. Please use your own ID number.";
+const REGISTRATION_ID_PATTERN = /^[0-9]{4}-[0-9]{4}$/;
+const ID_CHECK_DEBOUNCE_MS = 800;
+
+// File 152 returns a specific id_number field error after completed signup.
+// File 154 also offers a localhost-only, CSRF-protected, rate-limited ID
+// availability hint, so this form checks only fully formatted, settled IDs.
+// The final registration POST remains authoritative.
+function isDuplicateIdConflict(error) {
+  return (
+    error?.status === 409 &&
+    Array.isArray(error.fields) &&
+    error.fields.some((entry) => entry?.name === "id_number")
+  );
+}
 
 const initialData = {
   id_number: "",
@@ -335,6 +356,8 @@ function Field({
   name,
   value,
   onChange,
+  onBlur,
+  hint,
   required = false,
   optional = false,
   type = "text",
@@ -360,14 +383,43 @@ function Field({
           className="lg-input"
           value={value}
           onChange={onChange}
+          onBlur={onBlur}
           placeholder={placeholder}
           maxLength={maxLength}
           readOnly={readOnly}
           required={required}
+          aria-invalid={Boolean(error)}
+          aria-describedby={
+            [error && `reg-${name}-error`, hint && !error && `reg-${name}-hint`]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
         />
       )}
 
-      {error && <p className="lg-register-error">{error}</p>}
+      {error && (
+        <p
+          className="lg-register-error"
+          id={`reg-${name}-error`}
+          role="alert"
+          style={
+            name === "id_number" && error === DUPLICATE_ID_MESSAGE
+              ? { color: "#dc2626", fontWeight: 600 }
+              : undefined
+          }
+        >
+          {error}
+        </p>
+      )}
+      {hint && !error && (
+        <p
+          className="lg-register-description"
+          id={`reg-${name}-hint`}
+          role="status"
+        >
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -383,12 +435,143 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
   const [busy, setBusy] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusError, setStatusError] = useState(false);
+  const [idCheck, setIdCheck] = useState({ value: "", status: "idle" });
+
+  // Refs protect the form from stale async responses while the ID is edited.
+  // Caching avoids exhausting File 154's 8-checks-per-15-minutes limit when
+  // the user revisits Step 1. Cache is only an early hint, not a guarantee.
+  const currentIdRef = useRef("");
+  const idCheckPendingRef = useRef(null);
+  const idCheckCacheRef = useRef(new Map());
+  const idCheckRateLimitedUntilRef = useRef(0);
+
+  const checkId = useCallback((rawId) => {
+    const id = typeof rawId === "string" ? rawId.trim() : "";
+    if (!REGISTRATION_ID_PATTERN.test(id)) return Promise.resolve(null);
+
+    const cached = idCheckCacheRef.current.get(id);
+    if (typeof cached === "boolean") {
+      if (currentIdRef.current === id) {
+        setIdCheck({ value: id, status: cached ? "available" : "taken" });
+        setErrors((previous) => ({
+          ...previous,
+          id_number: cached ? "" : DUPLICATE_ID_MESSAGE,
+        }));
+      }
+      return Promise.resolve(cached);
+    }
+
+    // Respect the backend's limited lookup quota without repeatedly
+    // provoking 429 responses after a previous check exhausted it.
+    if (Date.now() < idCheckRateLimitedUntilRef.current) {
+      if (currentIdRef.current === id) {
+        setIdCheck({
+          value: id,
+          status: "unavailable",
+          message:
+            "ID checks are temporarily limited. The ID will be verified when you register.",
+        });
+      }
+      return Promise.resolve(null);
+    }
+
+    // A blur during a pending debounced check should reuse that request.
+    if (idCheckPendingRef.current?.value === id) {
+      return idCheckPendingRef.current.promise;
+    }
+
+    // A changed ID makes the old response irrelevant.
+    idCheckPendingRef.current?.controller.abort();
+    const controller = new AbortController();
+    if (currentIdRef.current === id) {
+      setIdCheck({ value: id, status: "checking" });
+    }
+
+    const promise = checkRegistrationIdAvailability(id, {
+      signal: controller.signal,
+    })
+      .then(({ available }) => {
+        if (controller.signal.aborted) return null;
+        idCheckCacheRef.current.set(id, available);
+        if (currentIdRef.current === id) {
+          setIdCheck({ value: id, status: available ? "available" : "taken" });
+          setErrors((previous) => ({
+            ...previous,
+            id_number: available ? "" : DUPLICATE_ID_MESSAGE,
+          }));
+        }
+        return available;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return null;
+        if (error?.status === 429) {
+          // Conservative local cooldown, because the endpoint limits checks
+          // in a rolling 15-minute window. The final registration is usable.
+          idCheckRateLimitedUntilRef.current = Date.now() + 15 * 60 * 1000;
+        }
+        // Lookup failures must not block registration. The final POST still
+        // checks database uniqueness. Do not automatically retry a 429.
+        if (currentIdRef.current === id) {
+          setIdCheck({
+            value: id,
+            status: "unavailable",
+            message:
+              error?.status === 429
+                ? "ID checks are temporarily limited. The ID will be verified when you register."
+                : "ID could not be checked now. It will be verified when you register.",
+          });
+        }
+        return null;
+      })
+      .finally(() => {
+        if (idCheckPendingRef.current?.controller === controller) {
+          idCheckPendingRef.current = null;
+        }
+      });
+
+    idCheckPendingRef.current = { value: id, controller, promise };
+    return promise;
+  }, []);
+
+  // Also check after typing stops, so users need not click another field.
+  // Timer cleanup means partial IDs do not create network traffic.
+  useEffect(() => {
+    if (step !== 1 || !REGISTRATION_ID_PATTERN.test(data.id_number)) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      void checkId(data.id_number);
+    }, ID_CHECK_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [data.id_number, step, checkId]);
+
+  useEffect(
+    () => () => {
+      idCheckPendingRef.current?.controller.abort();
+    },
+    [],
+  );
 
   const age = calculateAge(data.birthdate);
   const strength = passwordStrength(data.password);
 
+  // Focus the ID input only after React has rendered Personal Information.
+  useEffect(() => {
+    if (step === 1 && errors.id_number === DUPLICATE_ID_MESSAGE) {
+      document.getElementById("reg-id_number")?.focus();
+    }
+  }, [step, errors.id_number]);
+
   function update(event) {
     const { name, value, type, checked } = event.target;
+
+    if (name === "id_number") {
+      currentIdRef.current = value;
+      if (idCheckPendingRef.current?.value !== value) {
+        idCheckPendingRef.current?.controller.abort();
+      }
+      setIdCheck({ value, status: "idle" });
+    }
 
     setData((previous) => ({
       ...previous,
@@ -435,8 +618,13 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
     const nextErrors = {};
 
     if (step === 1) {
-      if (!/^[0-9]{4}-[0-9]{4}$/.test(data.id_number)) {
+      if (!REGISTRATION_ID_PATTERN.test(data.id_number)) {
         nextErrors.id_number = "ID number must use the format 0000-0000.";
+      } else if (
+        idCheck.value === data.id_number &&
+        idCheck.status === "taken"
+      ) {
+        nextErrors.id_number = DUPLICATE_ID_MESSAGE;
       }
       if (data.extension_type === "Other" && !data.name_extension.trim()) {
         nextErrors.name_extension = "Please specify your name extension.";
@@ -559,10 +747,18 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function nextStep() {
-    if (validateStep()) {
-      setStep((previous) => Math.min(previous + 1, 3));
+  async function nextStep() {
+    if (busy || !validateStep()) return;
+    if (step === 1) {
+      // Resolve the early check before allowing the Personal step to advance.
+      // When rate-limited/offline, do not trap a legitimate user: the final
+      // CAPTCHA-protected registration still validates the ID in PostgreSQL.
+      const idBeingChecked = data.id_number;
+      const available = await checkId(idBeingChecked);
+      if (available === false || currentIdRef.current !== idBeingChecked)
+        return;
     }
+    setStep((previous) => Math.min(previous + 1, 3));
   }
 
   function previousStep() {
@@ -644,9 +840,21 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
       setStatusError(false);
       setStep(4);
     } catch (error) {
-      // The API may have committed a pending account even when Gmail fails.
-      // Route the user to Resend rather than encouraging duplicate registration.
-      if (
+      // A structured 409 from File 152 means the ID is already registered.
+      // Keep all entered form data, including selected security questions,
+      // and show the error directly beneath the ID Number input on Step 1.
+      if (isDuplicateIdConflict(error)) {
+        idCheckCacheRef.current.set(data.id_number, false);
+        setIdCheck({ value: data.id_number, status: "taken" });
+        setStep(1);
+        setErrors({ id_number: DUPLICATE_ID_MESSAGE });
+        setStatusError(true);
+        setStatusMessage(
+          "Please correct the highlighted ID number before continuing.",
+        );
+        // The API may have committed a pending account even when Gmail fails.
+        // Route the user to Resend rather than encouraging duplicate registration.
+      } else if (
         error.status === 503 &&
         error.message?.includes("Verification email could not be sent")
       ) {
@@ -793,6 +1001,19 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
                   required: true,
                   placeholder: "xxxx-xxxx",
                   maxLength: 9,
+                  onBlur: (event) => {
+                    void checkId(event.target.value);
+                  },
+                  hint:
+                    idCheck.value === data.id_number
+                      ? idCheck.status === "checking"
+                        ? "Checking ID number..."
+                        : idCheck.status === "available"
+                          ? "ID number is available."
+                          : idCheck.status === "unavailable"
+                            ? idCheck.message
+                            : ""
+                      : "",
                 })}
 
                 {field("birthdate", "Birthdate", {
@@ -1209,9 +1430,9 @@ export default function RegisterPanel({ onPreviewEmailOtp }) {
 
           {step === 3 && (
             <p className="lg-register-development-notice">
-              Registration is connected to the local FastAPI backend. A valid
-              Google reCAPTCHA checkbox and working Gmail configuration are
-              required. Use only fictional accounts while testing.
+              Registration is connected to the local Server. A valid Google
+              reCAPTCHA checkbox and working Gmail configuration are required.
+              Use only fictional accounts while testing.
             </p>
           )}
         </form>

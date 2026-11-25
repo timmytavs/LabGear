@@ -105,7 +105,7 @@ async function apiGet(path, signal) {
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     throw new Error(
-      "Unable to reach the LabGear Equipment API. Check FastAPI and your network.",
+      "Unable to reach the LabGear Equipment API. Check Server and your network.",
     );
   }
 
@@ -123,7 +123,7 @@ async function apiGet(path, signal) {
     }
 
     throw new Error(
-      `Equipment API returned HTTP ${response.status}. Check the FastAPI terminal for details.`,
+      `Equipment API returned HTTP ${response.status}. Check the Server Terminal terminal for details.`,
     );
   }
 
@@ -736,7 +736,7 @@ export default function EquipmentCatalog({ role = "student" }) {
         <p>
           {isDesignPreview
             ? "Frontend design preview: fictional inventory records. No authentication or database changes."
-            : "Inventory totals and current stock are read from PostgreSQL. Students and instructors can submit reservation requests for technician review; approved requests proceed to equipment allocation."}
+            : "Inventory totals and current stock are read from Database. Students and instructors can submit reservation requests for technician review; approved requests proceed to equipment allocation."}
         </p>
       </div>
 
@@ -949,7 +949,7 @@ export default function EquipmentCatalog({ role = "student" }) {
               displayQuantity(selected.available_units) === 0 && (
                 <p className="lgeq-unavailable-message">
                   No units are currently marked available. You may still request
-                  a future date range; FastAPI will check existing reservations
+                  a future date range; Server will check existing reservations
                   and equipment capacity before accepting the request.
                 </p>
               )}

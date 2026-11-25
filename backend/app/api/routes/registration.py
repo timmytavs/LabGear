@@ -1,20 +1,31 @@
 
-"""LabGear Backend File 81 — registration API with public CSRF enforcement.
+"""LabGear Backend File 154 — rate-limited live ID check (preserves File 152).
 
 Destination: backend/app/api/routes/registration.py (REPLACE).
 
 Routes:
+    POST /api/auth/register/check-id
     POST /api/auth/register
     POST /api/auth/register/verify-otp
     POST /api/auth/register/resend-otp
 
-All three unsafe public registration routes require the signed, short-lived
+All four public registration POST routes require the signed, short-lived
 public-form CSRF token issued by File 79 at GET /api/auth/csrf.
 
 Preserves the existing registration workflow, privacy consent, CAPTCHA,
 three distinct user-selected Q1-Q8 security questions (and legacy Q7/Q2/Q4
 compatibility), database-backed IP limits, email delivery, and one-time
 registration OTP verification/resend behavior.
+
+File 152's authoritative duplicate ID check remains in the complete,
+CAPTCHA-protected registration POST. File 154 adds a local-development-only,
+short-window rate-limited ID check for the registration form's Step 1; it
+requires a signed CSRF token and a trusted local Origin. It exposes whether
+an ID is already used, so production deployments should require stronger
+anti-enumeration controls (or omit this early lookup entirely).
+The check does not reserve IDs, create users, or send emails. Final registration
+still relies on PostgreSQL uniqueness and the existing conflict handling.
+Remaining duplicate username/email conflicts return a field-neutral 409.
 
 The router remains local-development only. The public CSRF token does not
 authenticate a user and does not replace CAPTCHA, rate limits, account
@@ -28,11 +39,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.auth_config import AuthConfigurationError
 from app.db.dependencies import DbSession
 from app.models.security import ActivityLog
+from app.models.user import User
 from app.schemas.auth import RegistrationRequest
 from app.services.captcha_service import (
     CaptchaConfigurationError,
@@ -65,11 +77,10 @@ from app.services.session_service import CSRF_HEADER_NAME
 
 router = APIRouter(prefix="/api/auth", tags=["Registration"])
 
-# Database-backed, per-IP request limits. They also apply to rejected
-# registration, CAPTCHA, and OTP attempts after browser-origin/CSRF checks.
-# A per-account limit for issued resends is enforced by the Step 55 service.
+# Database-backed, per-IP request limits.
 IP_LIMITS = {
     "registration_request": (5, 15 * 60),
+    "registration_id_check": (8, 15 * 60),
     "registration_verify_request": (12, 10 * 60),
     "registration_resend_request": (6, 15 * 60),
 }
@@ -92,11 +103,7 @@ GENERIC_SECURITY_ERROR = "Registration security is temporarily unavailable."
 
 
 class PublicRegistrationRequest(RegistrationRequest):
-    """Preserve public username/legacy answer checks and selected Q1-Q8 support.
-
-    RegistrationRequest validates exactly three distinct selected questions
-    and rejects mixing them with the legacy Q7/Q2/Q4 fields.
-    """
+    """Preserve username, legacy answers and selected Q1–Q8 support."""
 
     @field_validator("username")
     @classmethod
@@ -112,9 +119,6 @@ class PublicRegistrationRequest(RegistrationRequest):
     )
     @classmethod
     def validate_public_answer(cls, value: str | None) -> str | None:
-        # New registration sends security_questions instead of the old fields.
-        # Inherited RegistrationRequest validation still rejects explicit nulls,
-        # partial legacy answers, and mixing legacy and selected questions.
         if value is None:
             return None
         if (
@@ -125,6 +129,19 @@ class PublicRegistrationRequest(RegistrationRequest):
                 "Security answer must use 2-50 letters/spaces without double spaces."
             )
         return value
+
+
+class RegistrationIDCheckRequest(BaseModel):
+    """An ID to check, without recording it in the lookup audit."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    id_number: str = Field(pattern=r"^[0-9]{4}-[0-9]{4}$")
+
+
+class RegistrationIDCheckResponse(BaseModel):
+    """Early UI hint; final registration still enforces uniqueness."""
+
+    available: bool
 
 
 class VerifyRegistrationOTPRequest(BaseModel):
@@ -153,7 +170,7 @@ class RegistrationVerificationMessage(RegistrationMessage):
 
 
 def _local_client_ip(request: Request) -> str:
-    """Allow local development only; never trust X-Forwarded-For here."""
+    """Allow local development only; never trust X-Forwarded-For."""
     host = request.client.host if request.client else ""
 
     try:
@@ -167,7 +184,6 @@ def _local_client_ip(request: Request) -> str:
             detail="Registration API is currently available only on localhost.",
         )
 
-    # Also reject external Host headers when using a local reverse proxy.
     if request.url.hostname not in ("127.0.0.1", "localhost", "::1"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -178,12 +194,7 @@ def _local_client_ip(request: Request) -> str:
 
 
 def _trusted_browser_origin(request: Request) -> None:
-    """Reject cross-site browser requests and unapproved browser origins.
-
-    Origin-less calls remain available for local CLI/Swagger development.
-    The signed CSRF verifier below independently binds browser tokens to the
-    exact Origin that requested them.
-    """
+    """Reject cross-site browser requests and unapproved origins."""
     if request.headers.get("sec-fetch-site", "").strip().lower() == "cross-site":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -199,7 +210,7 @@ def _trusted_browser_origin(request: Request) -> None:
 
 
 def _require_public_csrf(request: Request) -> None:
-    """Require File 79's signed public-form CSRF token on every unsafe route."""
+    """Require the existing signed public-form CSRF token."""
     try:
         verify_public_csrf_token(
             request.headers.get(CSRF_HEADER_NAME),
@@ -219,7 +230,7 @@ def _require_public_csrf(request: Request) -> None:
 
 
 def _protect_public_post(request: Request) -> str:
-    """Apply local-host, Origin, and signed-CSRF checks before database work."""
+    """Apply localhost, Origin and signed-CSRF checks."""
     ip = _local_client_ip(request)
     _trusted_browser_origin(request)
     _require_public_csrf(request)
@@ -227,17 +238,11 @@ def _protect_public_post(request: Request) -> str:
 
 
 def _reserve_ip_attempt(db: DbSession, *, ip: str, action: str) -> None:
-    """Count attempts in PostgreSQL atomically; no volatile in-memory counters.
-
-    Advisory lock serializes this client's requests across workers. Complete
-    this short transaction before entering a registration service; each service
-    owns its own subsequent database transaction.
-    """
+    """Count attempts atomically using PostgreSQL audit records."""
     maximum, window_seconds = IP_LIMITS[action]
     now = datetime.now(timezone.utc)
 
     with db.begin():
-        # hashtext -> PostgreSQL bigint advisory lock. Only an IP hash reaches it.
         db.execute(
             select(
                 func.pg_advisory_xact_lock(
@@ -273,6 +278,46 @@ def _reserve_ip_attempt(db: DbSession, *, ip: str, action: str) -> None:
 
 
 @router.post(
+    "/register/check-id",
+    response_model=RegistrationIDCheckResponse,
+)
+def check_registration_id(
+    payload: RegistrationIDCheckRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> RegistrationIDCheckResponse:
+    """Return an early ID availability hint for registration Step 1.
+
+    Restricted to localhost, signed CSRF and eight lookups per IP in
+    fifteen minutes. No account is created and no email is sent.
+    """
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Vary"] = "Origin"
+
+    ip = _protect_public_post(request)
+    _reserve_ip_attempt(db, ip=ip, action="registration_id_check")
+
+    try:
+        with db.begin():
+            exists = db.execute(
+                select(User.id_number)
+                .where(User.id_number == payload.id_number)
+                .limit(1)
+            ).scalar_one_or_none() is not None
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ID availability cannot be checked right now.",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+
+    return RegistrationIDCheckResponse(available=not exists)
+
+
+@router.post(
     "/register",
     response_model=RegistrationMessage,
     status_code=status.HTTP_202_ACCEPTED,
@@ -283,7 +328,7 @@ def register(
     response: Response,
     db: DbSession,
 ) -> RegistrationMessage:
-    """Start self-registration and email the verification code using Gmail."""
+    """Start self-registration and email its verification code."""
     response.headers["Cache-Control"] = "no-store"
 
     ip = _protect_public_post(request)
@@ -292,8 +337,41 @@ def register(
     try:
         delivery = register_pending_user(db, payload)
     except RegistrationConflict:
-        # Avoid confirming that a specific ID, username, or email exists.
-        return RegistrationMessage(message=GENERIC_REGISTRATION_MESSAGE)
+        # The full registration endpoint independently checks duplicates.
+        # The database primary key remains the authoritative guard.
+        try:
+            with db.begin():
+                duplicate_id = db.execute(
+                    select(User.id_number)
+                    .where(User.id_number == payload.id_number)
+                    .limit(1)
+                ).scalar_one_or_none() is not None
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Registration is temporarily unavailable.",
+                headers={"Cache-Control": "no-store"},
+            ) from None
+
+        if duplicate_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=[
+                    {
+                        "loc": ["body", "id_number"],
+                        "msg": "This ID number already exists. Please use your own ID number.",
+                        "type": "value_error",
+                    }
+                ],
+                headers={"Cache-Control": "no-store"},
+            ) from None
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with the submitted details already exists. Review your ID number, username, or email.",
+            headers={"Cache-Control": "no-store"},
+        ) from None
     except RegistrationRejected:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,8 +385,6 @@ def register(
             headers={"Cache-Control": "no-store"},
         ) from None
     except IntegrityError:
-        # A non-unique database constraint failure is a server issue, not a
-        # request-validation result. Don't expose SQL statements or parameters.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Registration is temporarily unavailable.",
@@ -318,8 +394,6 @@ def register(
     try:
         send_registration_otp(delivery)
     except (EmailConfigurationError, EmailDeliveryError):
-        # A pending account now exists. Do not automatically create another
-        # OTP or bypass the resend cooldown. The resend endpoint can recover.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Verification email could not be sent. Try resending later.",
@@ -339,7 +413,7 @@ def verify_registration(
     response: Response,
     db: DbSession,
 ) -> RegistrationVerificationMessage:
-    """Use the Step 52 locked, one-time OTP verifier to activate an account."""
+    """Use the existing one-time OTP verifier to activate an account."""
     response.headers["Cache-Control"] = "no-store"
 
     ip = _protect_public_post(request)
@@ -375,7 +449,7 @@ def resend_registration(
     response: Response,
     db: DbSession,
 ) -> RegistrationMessage:
-    """Rate-limit, replace, and email a new registration code."""
+    """Rate-limit, replace and email a new registration code."""
     response.headers["Cache-Control"] = "no-store"
 
     ip = _protect_public_post(request)
@@ -403,10 +477,12 @@ def resend_registration(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Please wait before requesting another code.",
-            headers={"Retry-After": str(exc.retry_after_seconds), "Cache-Control": "no-store"},
+            headers={
+                "Retry-After": str(exc.retry_after_seconds),
+                "Cache-Control": "no-store",
+            },
         ) from None
     except RegistrationResendUnavailable:
-        # Keep existence and status of accounts confidential.
         return RegistrationMessage(message=GENERIC_REGISTRATION_MESSAGE)
 
     try:

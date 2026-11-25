@@ -1,9 +1,10 @@
 /**
- * LabGear Frontend File 146 — selectable security questions with public CSRF.
+ * LabGear Frontend File 155 — live registration ID availability client (preserves File 146).
  * Destination: frontend/src/services/registrationApi.js (REPLACE)
  *
- * Connects to Backend File 81:
+ * Connects to Backend Files 81 and 154:
  *   GET  /api/auth/csrf
+ *   POST /api/auth/register/check-id (limited to eight checks per IP / 15 min)
  *   POST /api/auth/register
  *   POST /api/auth/register/verify-otp
  *   POST /api/auth/register/resend-otp
@@ -15,6 +16,11 @@
  * Every public registration POST first fetches a fresh, short-lived signed
  * CSRF token and sends it in the X-CSRF-Token header. The token is bound to
  * the browser Origin by the backend and is never stored in browser storage.
+ *
+ * The optional ID check sends only an ID number and its CSRF token, not the
+ * full registration form or CAPTCHA. Call it sparingly (e.g., input blur),
+ * not on every keystroke; Backend File 154 enforces a strict lookup limit.
+ * Final registration remains authoritative and independently checks uniqueness.
  *
  * Registration does not create an authenticated session. No password, OTP,
  * CAPTCHA token, or CSRF token is persisted by this module.
@@ -338,6 +344,50 @@ async function fetchPublicCsrfToken({ signal } = {}) {
   }
 
   return result.csrf_token;
+}
+
+/**
+ * POST /api/auth/register/check-id (Backend File 154).
+ *
+ * Read-only availability hint for Step 1. Uses a fresh signed public CSRF
+ * token and sends only the submitted ID number, never account credentials.
+ * Backend rate-limits checks to eight requests per IP every 15 minutes.
+ * Trigger only for a complete ID (preferably after input blur); the final
+ * registration POST still performs the authoritative uniqueness check.
+ *
+ * Returns { available: boolean }. Throws RegistrationApiError for any
+ * transport, validation, rate-limit, or unexpected-response failure.
+ */
+export async function checkRegistrationIdAvailability(idNumber, options = {}) {
+  if (
+    typeof idNumber !== "string" ||
+    !REGISTRATION_ID_PATTERN.test(idNumber.trim())
+  ) {
+    throw new RegistrationApiError("ID number must use the format 0000-0000.", {
+      fields: [
+        {
+          name: "id_number",
+          message: "ID number must use the format 0000-0000.",
+        },
+      ],
+    });
+  }
+
+  const csrfToken = await fetchPublicCsrfToken(options);
+  const result = await requestJson("/api/auth/register/check-id", {
+    method: "POST",
+    body: { id_number: idNumber.trim() },
+    csrfToken,
+    signal: options.signal,
+  });
+
+  if (typeof result.available !== "boolean") {
+    throw new RegistrationApiError(
+      "The backend returned an invalid ID availability response.",
+    );
+  }
+
+  return { available: result.available };
 }
 
 /**

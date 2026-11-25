@@ -1,11 +1,12 @@
 
-"""LabGear Backend File 137 — updated login security settings (preserves File 106).
+"""LabGear Backend File 149 — persistent account lockout and accurate retry timing (preserves File 137).
 
 Destination: backend/app/services/login_service.py (REPLACE)
 
 This INTERNAL service provides:
   - Login CAPTCHA + username/password verification (Argon2id)
-  - Progressive 15/30/60-second account lockouts at 3/6/9 failed passwords
+  - Persistent users.failed_login_attempts + users.locked_until at 3/6/9 failures
+  - Progressive 15/30/60-second account lockouts with generic public errors
   - IP blocking after 10 failed password/OTP attempts in 10 minutes
   - Purpose-bound, single-use email login OTP (5-minute expiry; 3 guesses)
   - Login OTP cooldown (60 seconds) and three reissues/15-minute window
@@ -22,9 +23,17 @@ No test-only bypass of CAPTCHA, password, or OTP exists in production code.
 File 105 records CAPTCHA_FAILED after a rejected login CAPTCHA, using the
 existing activity_logs table.
 
-File 106 sends one SMTP alert after each of lockout thresholds 3, 6, and 9
-for verified active accounts; records alert_email_sent only after SMTP
-acceptance. All login/OTP response behavior stays unchanged.
+Lockout and failure audit writes commit before the endpoint raises an HTTP
+error. Account-specific lockouts continue to return a generic login rejection,
+so a 429 response cannot be used to enumerate existing usernames. The IP-based
+429 responses retain an accurate Retry-After header.
+
+Retains Gmail SMTP alerts at 3, 6, and 9 failures; alert_email_sent is logged
+only after SMTP acceptance. Does not change registration, CSRF, or OTP flows.
+
+IMPORTANT: captcha failures produce CAPTCHA_FAILED audit events, but do NOT
+count as wrong-password attempts. A successful completed login may reset the
+account's counter in the session service.
 """
 
 from __future__ import annotations
@@ -151,14 +160,17 @@ def _lock_ip(db: Session, address: str) -> None:
     ).scalar_one()
 
 
-def _ip_blocked(db: Session, address: str, now: datetime) -> bool:
+def _ip_block_remaining(db: Session, address: str, now: datetime) -> int:
+    """Seconds until the IP ban expires, for an accurate Retry-After header."""
     blocked_until = db.execute(
         select(IPBlock.blocked_until)
         .where(IPBlock.ip_address == address)
         .order_by(IPBlock.blocked_until.desc())
         .limit(1)
     ).scalar_one_or_none()
-    return blocked_until is not None and _utc(blocked_until) > now
+    if blocked_until is None:
+        return 0
+    return max(0, math.ceil((_utc(blocked_until) - now).total_seconds()))
 
 
 def _failed_ip_attempt(
@@ -201,19 +213,29 @@ def _failed_ip_attempt(
         ))
 
 
-def _account_locked(db: Session, user_id: str, now: datetime) -> bool:
+def _account_lock_remaining(db: Session, user: User, now: datetime) -> int:
+    """Read the authoritative account lock from users.locked_until.
+
+    Existing accounts may have lockout activity logs from the older service,
+    which never wrote users.locked_until. Honor those events until they expire.
+    Do not reveal this user's lockout details outside the existing login route.
+    """
+    if user.locked_until is not None:
+        return max(0, math.ceil((_utc(user.locked_until) - now).total_seconds()))
+
     latest = db.execute(
         select(ActivityLog).where(
-            ActivityLog.user_id == user_id,
+            ActivityLog.user_id == user.id_number,
             ActivityLog.event_type == "login_account_lockout",
         ).order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc()).limit(1)
     ).scalar_one_or_none()
     if latest is None:
-        return False
-    duration = latest.details.get("duration_seconds", 0)
-    if not isinstance(duration, int) or duration <= 0:
-        return False
-    return _utc(latest.created_at) + timedelta(seconds=duration) > now
+        return 0
+    duration = (latest.details or {}).get("duration_seconds", 0)
+    if type(duration) is not int or duration <= 0:
+        return 0
+    expires = _utc(latest.created_at) + timedelta(seconds=duration)
+    return max(0, math.ceil((expires - now).total_seconds()))
 
 
 def _lockout_duration(failed_count: int, settings: AuthSettings) -> int:
@@ -352,9 +374,8 @@ def begin_login(
     with db.begin():
         _lock_ip(db, address)
         now = datetime.now(timezone.utc)
-        if _ip_blocked(db, address, now):
-            throttled = 60
-        else:
+        throttled = _ip_block_remaining(db, address, now)
+        if not throttled:
             user = db.execute(
                 select(User).where(func.lower(User.username) == identifier.lower()).with_for_update()
             ).scalar_one_or_none() if USERNAME_PATTERN.fullmatch(identifier) else None
@@ -365,15 +386,23 @@ def begin_login(
                 user is not None and password_ok and
                 user.account_status == "active" and user.is_email_verified is True
             )
-            if user is not None and _account_locked(db, user.id_number, now):
+            account_wait = _account_lock_remaining(db, user, now) if user is not None else 0
+            if account_wait:
                 # No further account failures while a lockout is active.
+                # Keep the error generic to resist account enumeration.
                 rejected = True
             elif not eligible:
                 user_id = user.id_number if user is not None else None
                 if user is not None:
-                    user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+                    # Expired locks should not remain visible in the users table.
+                    if user.locked_until is not None and _utc(user.locked_until) <= now:
+                        user.locked_until = None
+                    user.failed_login_attempts = min(
+                        2_147_483_647, int(user.failed_login_attempts or 0) + 1
+                    )
                     duration = _lockout_duration(user.failed_login_attempts, settings)
                     if duration:
+                        user.locked_until = now + timedelta(seconds=duration)
                         db.add(ActivityLog(
                             event_type="login_account_lockout", user_id=user.id_number,
                             ip_address=address, user_agent=_ua(user_agent),
@@ -497,12 +526,13 @@ def verify_login_otp_code(
     settings = load_auth_settings()
     principal: VerifiedLoginPrincipal | None = None
     rejected = False
-    throttled = False
+    throttled = 0
     with db.begin():
         _lock_ip(db, address)
         now = datetime.now(timezone.utc)
-        if _ip_blocked(db, address, now):
-            throttled = True
+        blocked_for = _ip_block_remaining(db, address, now)
+        if blocked_for:
+            throttled = blocked_for
         else:
             user = db.execute(
                 select(User).where(User.id_number == user_id).with_for_update()
@@ -518,7 +548,7 @@ def verify_login_otp_code(
                 ).scalar_one_or_none()
             eligible = user is not None and user.account_status == "active" and user.is_email_verified is True
             if (
-                not eligible or (user is not None and _account_locked(db, user_id, now))
+                not eligible or (user is not None and _account_lock_remaining(db, user, now) > 0)
                 or otp is None or otp.used_at is not None
                 or otp.revoked_at is not None
                 or otp.failed_attempts >= settings.otp_max_failed_attempts
@@ -566,7 +596,7 @@ def verify_login_otp_code(
                     user_id=user.id_number, username=user.username, role=user.role
                 )
     if throttled:
-        raise LoginThrottled(60)
+        raise LoginThrottled(throttled)
     if rejected or principal is None:
         raise LoginUnavailable("Invalid or expired verification code.")
     return principal

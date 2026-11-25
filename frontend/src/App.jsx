@@ -91,7 +91,7 @@ function normalizeAccount(data) {
     !Number.isFinite(expiry) ||
     expiry <= Date.now()
   ) {
-    throw new Error("FastAPI returned an invalid authenticated account.");
+    throw new Error("Server returned an invalid authenticated account.");
   }
   return { userId, username, role, expiresAt: data.expires_at };
 }
@@ -222,7 +222,7 @@ async function reservationApi(path, { method = "GET", body, signal } = {}) {
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     throw new Error(
-      "Unable to connect to LabGear FastAPI. Check that the backend is running.",
+      "Unable to connect to LabGear Server. Check that the backend is running.",
     );
   }
   const data = await response.json().catch(() => null);
@@ -476,7 +476,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
       });
       if (!created?.reservation_code || created?.status !== "pending") {
         throw new Error(
-          "FastAPI did not confirm the pending reservation. Check My Reservations before retrying.",
+          "Server did not confirm the pending reservation. Check My Reservations before retrying.",
         );
       }
       setDraft(freshReservationDraft());
@@ -639,7 +639,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
             <p style={{ color: "#60748e", fontSize: 13, lineHeight: 1.6 }}>
               The catalog's existing “Preview Request” button does not save a
               reservation yet. Select <strong>Quick Reservation</strong> above
-              to submit a real request to PostgreSQL.
+              to submit a real request to Database.
             </p>
           </section>
         )}
@@ -650,7 +650,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
           >
             <h2 style={{ marginTop: 0 }}>Submit a Reservation</h2>
             <p style={{ color: "#60748e", lineHeight: 1.6 }}>
-              Requests are saved in PostgreSQL as pending until a technician
+              Requests are saved in Databse as pending until a technician
               reviews them. Available stock is rechecked by the server for your
               selected dates.
             </p>
@@ -765,7 +765,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
                 </label>
                 <p style={{ color: "#60748e", margin: 0, fontSize: 13 }}>
                   Dates use your device's local time. Start must be in the
-                  future; the reservation is saved only after FastAPI confirms
+                  future; the reservation is saved only after Server confirms
                   it.
                 </p>
                 {equipment.length === 0 && (
@@ -812,7 +812,7 @@ function StudentReservationWorkspace({ account, onSessionExpired }) {
           <section style={reservationPanel} aria-label="My reservation history">
             <h2 style={{ marginTop: 0 }}>My Reservations</h2>
             <p style={{ color: "#60748e" }}>
-              Only your own requests are returned by FastAPI.
+              Only your own requests are returned by Server.
               {historyTotal > 50
                 ? ` Showing 50 most recent of ${historyTotal} requests.`
                 : ""}
@@ -1073,7 +1073,7 @@ function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
         if (!active || error?.name === "AbortError") return;
         const message =
           error?.status === 404
-            ? "The handover API is not available yet. Confirm Backend File 113 is installed and FastAPI has restarted."
+            ? "The handover API is not available yet. Confirm Backend File 113 is installed and Server has restarted."
             : error?.message ||
               "Unable to load approved and issued reservations.";
         setLoadError(message);
@@ -1122,7 +1122,7 @@ function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
       );
       if (result?.reservation_id !== item.id || result?.status !== "issued") {
         throw new Error(
-          "FastAPI did not confirm issuance. Refresh before attempting it again.",
+          "Server did not confirm issuance. Refresh before attempting it again.",
         );
       }
       const tags = Array.isArray(result.asset_tags)
@@ -1167,7 +1167,7 @@ function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
       );
       if (result?.reservation_id !== item.id || result?.status !== "returned") {
         throw new Error(
-          "FastAPI did not confirm the return. Refresh before attempting it again.",
+          "Server did not confirm the return. Refresh before attempting it again.",
         );
       }
       setNotice({
@@ -1270,7 +1270,7 @@ function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
 
       {loading ? (
         <p style={{ color: "#64748b" }}>
-          Retrieving equipment handovers from FastAPI…
+          Retrieving equipment handovers from Server…
         </p>
       ) : loadError ? (
         <button type="button" style={buttonStyle} onClick={refreshList}>
@@ -1414,7 +1414,7 @@ function TechnicianHandoverPanel({ refreshToken, onSessionExpired }) {
                       >
                         Confirm only after physically handing all{" "}
                         {item.quantity} unit(s) to the borrower. This will mark
-                        the units as <strong>Issued</strong> in PostgreSQL.
+                        the units as <strong>Issued</strong> in Database.
                       </p>
                       <button
                         type="button"
@@ -1661,7 +1661,7 @@ function TechnicianConditionHistory({
           !Number.isInteger(data?.pages)
         ) {
           throw new Error(
-            "FastAPI returned an unexpected condition history response.",
+            "Server returned an unexpected condition history response.",
           );
         }
         setRecords(data.items);
@@ -1673,7 +1673,7 @@ function TechnicianConditionHistory({
         if (!active || failure?.name === "AbortError") return;
         setError(
           failure?.status === 404
-            ? "Damage and repair history API not found. Confirm File 125 is installed and restart FastAPI."
+            ? "Damage and repair history API not found. Confirm File 125 is installed and restart Server."
             : failure?.message ||
                 "Could not retrieve equipment condition history.",
         );
@@ -1996,7 +1996,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
     reservationApi("/api/equipment/categories", { signal: controller.signal })
       .then((data) => {
         if (!Array.isArray(data)) {
-          throw new Error("FastAPI returned invalid equipment categories.");
+          throw new Error("Server returned invalid equipment categories.");
         }
         setCategories(data);
         setCategoryError("");
@@ -2050,7 +2050,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
         setItems([]);
         setLoadError(
           error?.status === 404
-            ? "Technician Inventory API not found. Complete File 117 and restart FastAPI."
+            ? "Technician Inventory API not found. Complete File 117 and restart Server."
             : error?.message || "Could not load inventory.",
         );
         if (error?.status === 401) onSessionExpired();
@@ -2084,7 +2084,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
       .then((data) => {
         if (!active) return;
         if (!Array.isArray(data?.items)) {
-          throw new Error("FastAPI returned invalid equipment units.");
+          throw new Error("Server returned invalid equipment units.");
         }
         setUnits(data.items);
       })
@@ -2197,7 +2197,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
       });
       if (!Number.isInteger(result?.equipment?.id)) {
         throw new Error(
-          "FastAPI did not confirm equipment creation. Refresh inventory before retrying.",
+          "Server did not confirm equipment creation. Refresh inventory before retrying.",
         );
       }
       setCreateDraft({ ...newEquipmentTemplate });
@@ -2253,7 +2253,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
       );
       if (result?.equipment?.id !== selected.id) {
         throw new Error(
-          "FastAPI did not confirm the update. Refresh inventory before retrying.",
+          "Server did not confirm the update. Refresh inventory before retrying.",
         );
       }
       updateCreatedRecord(result.equipment);
@@ -2300,7 +2300,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
         result.added_asset_tags.length !== quantity
       ) {
         throw new Error(
-          "FastAPI did not confirm the added units. Refresh inventory before retrying.",
+          "Server did not confirm the added units. Refresh inventory before retrying.",
         );
       }
       updateCreatedRecord(result.equipment);
@@ -2374,7 +2374,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
         result?.equipment?.id !== selected.id
       ) {
         throw new Error(
-          "FastAPI did not confirm the condition update. Refresh Units before retrying.",
+          "Server did not confirm the condition update. Refresh Units before retrying.",
         );
       }
       setConditionTarget(null);
@@ -2425,7 +2425,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
             <p style={{ margin: 0, color: "#60748e", fontSize: 13 }}>
               {loading
                 ? "Loading inventory…"
-                : `${total} equipment type${total === 1 ? "" : "s"} in PostgreSQL`}
+                : `${total} equipment type${total === 1 ? "" : "s"} in Database`}
             </p>
           </div>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
@@ -2987,7 +2987,7 @@ function TechnicianInventoryPanel({ onSessionExpired }) {
                   lineHeight: 1.6,
                 }}
               >
-                FastAPI blocks deactivation when any active reservation still
+                Server blocks deactivation when any active reservation still
                 exists.
               </p>
               <button
@@ -3438,7 +3438,7 @@ function TechnicianReservationWorkspace({ account, onSessionExpired }) {
       );
       if (result?.reservation_id !== item.id || result?.status !== decision) {
         throw new Error(
-          "FastAPI did not confirm this decision. Refresh the queue before retrying.",
+          "Server did not confirm this decision. Refresh the queue before retrying.",
         );
       }
 
@@ -3611,7 +3611,7 @@ function TechnicianReservationWorkspace({ account, onSessionExpired }) {
 
               {loading ? (
                 <p style={{ color: "#64748b" }}>
-                  Retrieving pending requests from FastAPI…
+                  Retrieving pending requests from Server…
                 </p>
               ) : loadingError ? (
                 <button
@@ -3902,7 +3902,7 @@ async function adminUsersApi(path, { method = "GET", body, signal } = {}) {
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     throw new Error(
-      "Cannot connect to LabGear FastAPI. Check the backend server.",
+      "Cannot connect to LabGear Server. Check the backend server.",
     );
   }
   const data = await response.json().catch(() => null);
@@ -3965,7 +3965,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
           !Number.isInteger(data?.pages)
         ) {
           throw new Error(
-            "FastAPI returned an unexpected user-management response.",
+            "Server returned an unexpected user-management response.",
           );
         }
         setUsers(data.items);
@@ -4033,7 +4033,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
         result?.user?.role !== pending.nextRole
       ) {
         throw new Error(
-          "FastAPI did not confirm the role change. Refresh before retrying.",
+          "Server did not confirm the role change. Refresh before retrying.",
         );
       }
       setNotice({
@@ -4099,7 +4099,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
         });
         if (result?.deleted !== true || result?.user_id !== action.userId) {
           throw new Error(
-            "FastAPI did not confirm account deletion. Refresh the user list before trying again.",
+            "Server did not confirm account deletion. Refresh the user list before trying again.",
           );
         }
         setNotice({
@@ -4118,7 +4118,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
           result?.user?.account_status !== nextStatus
         ) {
           throw new Error(
-            "FastAPI did not confirm the account status. Refresh the user list before retrying.",
+            "Server did not confirm the account status. Refresh the user list before retrying.",
           );
         }
         setNotice({
@@ -4343,7 +4343,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
               </div>
               <p style={{ margin: 0, color: "#344763" }}>
                 {accountAction.action === "delete"
-                  ? "This permanently removes the account from PostgreSQL. It cannot be undone. The backend requires the account to be inactive and without reservation or technician-decision history; linked records may also block deletion. Audit records are retained."
+                  ? "This permanently removes the account from Database. It cannot be undone. The backend requires the account to be inactive and without reservation or technician-decision history; linked records may also block deletion. Audit records are retained."
                   : accountAction.action === "deactivate"
                     ? "This account will be blocked from signing in, and its existing sessions will be revoked. The backend will refuse deactivation while the user has pending, approved or issued reservations."
                     : "This account will be allowed to sign in again. A new normal login and email OTP verification will be required."}
@@ -4457,9 +4457,7 @@ function AdminUsersPanel({ onBack, onSessionExpired }) {
           )}
 
           {loading ? (
-            <p style={{ color: "#60748e" }}>
-              Retrieving accounts from FastAPI…
-            </p>
+            <p style={{ color: "#60748e" }}>Retrieving accounts from Server…</p>
           ) : loadError ? null : users.length === 0 ? (
             <p
               style={{
@@ -4859,7 +4857,7 @@ function App() {
         setAuthError("");
       } else {
         setAuth({ status: "unavailable", account: null });
-        setAuthError("Unable to verify the current session with FastAPI.");
+        setAuthError("Unable to verify the current session with Server.");
       }
     }
   }, []);

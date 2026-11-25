@@ -3,11 +3,11 @@
 **Project:** LabGear — School Laboratory Equipment Reservation System  
 **Course:** IT 107 — Secure Registration, Authentication and Monitoring System  
 **Document:** `docs/TEST_LOG.md`  
-**Version:** 2.0 — current test register  
-**Updated:** November 17, 2026  
-**Overall status:** **Core registration, login, and Q1–Q8 password recovery reported working; instructor security settings reported PASS. Final evidence review remains open.**
+**Version:** 2.1 — account lockout and UI verification update  
+**Updated:** November 18, 2026  
+**Overall status:** **Core authentication and Q1–Q8 recovery reported working; November 18 PostgreSQL evidence confirms 3/6/9 account lockout tiers at 15/30/60 seconds, and developer confirmed countdown persistence after refresh. IP-blocking regression, authoritative cross-device countdown, and final security evidence remain open.**
 
-> **Evidence rule:** A developer's **DONE** confirmation records a reported completion, not an independently retained test transcript. Distinguish isolated syntax/mock tests, live database/provider checks, and end-to-end browser tests. Preserve historical failures and their fixes. The specific November 17 PowerShell outputs and screenshots mentioned below were directly shared; unshared test details remain labeled **reported**.
+> **Evidence rule:** A developer's **DONE** confirmation records a reported completion, not an independently retained test transcript. Distinguish isolated syntax/mock tests, live database/provider checks, and end-to-end browser tests. Preserve historical failures and their fixes. The specific November 17 PowerShell outputs and November 18 PostgreSQL/browser screenshots mentioned below were directly shared; unshared test details remain labeled **reported**.
 
 ---
 
@@ -51,7 +51,7 @@ Every time a feature is tested:
 | Secrets handling | `.env` is private and intended to be untracked; do not copy its contents into the test log |
 | Local timezone | Asia/Manila (PHT, UTC+08:00) |
 
-**Current instructor-wide settings (notice issued November 16, 2026; user-reported PASS November 17):** username **6–20** characters; password minimum **8** characters; each name field maximum **50**; Forgot Password link after **2** failed logins; account lockouts at **3 / 6 / 9** failures for **15 / 30 / 60 seconds**; six-digit email OTP expiry **5 minutes**; idle timeout **15 minutes**; IP block at **10 failed attempts in 10 minutes**, lasting **10 minutes**; and **three distinct Q1–Q8** questions chosen by the registrant. Original D1/D2 calculation artifacts are **superseded**, not the current acceptance criteria. The handout also specifies OTP resend cooldown **60 seconds** and at most **3 resends per 15 minutes**; record separate edge-case evidence for those rules.
+**Current instructor-wide settings (notice issued November 16, 2026; values reported PASS November 17 and account lockout tiers directly evidenced November 18):** username **6–20** characters; password minimum **8** characters; each name field maximum **50**; Forgot Password link after **2** failed logins; account lockouts at **3 / 6 / 9** failures for **15 / 30 / 60 seconds**; six-digit email OTP expiry **5 minutes**; idle timeout **15 minutes**; IP block at **10 failed attempts in 10 minutes**, lasting **10 minutes**; and **three distinct Q1–Q8** questions chosen by the registrant. Original D1/D2 calculation artifacts are **superseded**, not the current acceptance criteria. The handout also specifies OTP resend cooldown **60 seconds** and at most **3 resends per 15 minutes**; record separate edge-case evidence for those rules.
 
 ---
 
@@ -132,7 +132,7 @@ The records below **supplement** the original Steps 36–50, rather than erasing
 | LG-FUNC-118-123 | Role-specific frontend, admin users, equipment management, API registration | **Developer tests reported PASS** | Admin user list/role PATCH routes were exposed in OpenAPI; role restriction requires authorized/unauthorized response evidence. |
 | LG-FUNC-124-128 | Equipment damage/repair history; reservation cancellation of pending/approved requests | **Developer tests reported PASS** | Save state-change screenshots and verify cancellation restrictions and audit entries. |
 | LG-ADMIN-120-130 | `GET /api/admin/users` and `PATCH /api/admin/users/{user_id}/role`; later account-management changes | **Routes present; functionality reported working** | The API only assigns non-admin roles; do not describe it as a public admin-promotion endpoint. Verify CSRF/session/privilege checks. |
-| LG-BUILD-LATER | Frontend Vite production build | **Observed PASS in supplied PowerShell output:** `2082 modules transformed`; `✓ built in 517ms` | This confirms the build at that checkpoint, **not** a fresh build after all later Files 131–148. |
+| LG-BUILD-LATER | Frontend Vite production build | **Observed PASS in supplied PowerShell output:** `2082 modules transformed`; `✓ built in 517ms` | This confirms the build at that checkpoint, **not** a fresh build after later Files 131–151. |
 
 ### 3.5 Uniform-settings and selectable-question changes — Files 131–148
 
@@ -150,7 +150,25 @@ The records below **supplement** the original Steps 36–50, rather than erasing
 | LG-REC-148-FIX | `frontend/src/services/passwordRecoveryApi.js` File 148 | **Locally mocked checks reported PASS; developer confirmed working live** | Accepts Q1–Q8, username 6–20 and password min 8; preserves CSRF/CAPTCHA/cookies. |
 | LG-REC-148-E2E | Forgot Password → saved question → Gmail OTP → password reset → new login; old password rejected | **Developer explicitly confirmed completed, November 17, 2026** | **Reported live PASS**; archive sanitized browser/email/HTTP evidence without secrets. |
 
-**Actual outcomes vs. derived assumptions:** The user's November 17 statement that all settings pass covers their local verification; it does not supply the exact run transcript for each lockout/timeout/IP edge case. Likewise, PostgreSQL Q1–Q8 and full recovery were reported successful, while the pre-fix constraint screenshot and File 147 PowerShell outputs were directly observed.
+**Actual outcomes vs. derived assumptions:** The user's November 17 statement that all settings pass covers their local verification; it does not supply the exact run transcript for each timeout/IP edge case. **The November 18 account lockout evidence is more specific** and is documented below. PostgreSQL Q1–Q8 and full recovery were reported successful, while the pre-fix constraint screenshot and File 147 PowerShell outputs were directly observed.
+
+### 3.6 Persistent account lockout and UI — Files 149–151 (November 18, 2026)
+
+**Test environment:** Existing local verified test account; React/Vite login UI; FastAPI; PostgreSQL `labgear_db`; PostgreSQL Query Tool and browser screenshots shared in the development conversation. **No real password, OTP, CAPTCHA token, cookie or sensitive user identifier is included here.**
+
+| Test ID | Component and action | Actual observed outcome | Result and limitation |
+|---|---|---|---|
+| **LG-LOCK-149-01** | `backend/app/services/login_service.py` (File 149); check failed-login counter after incorrect-password tests | PostgreSQL screenshot first showed **4** failures and `locked_until = NULL`; a later screenshot showed **9** failures, a future `locked_until`, and `lockout_status = LOCKED`. | **Observed database PASS** for persisted failure counts and active locked state. The earlier `NULL` does not disprove the 3-attempt lock; File 149 can clear an expired lock on the next attempt. |
+| **LG-LOCK-149-02** | Read `activity_logs` events for the same test account | `login_account_lockout` records showed **3 attempts → 15 seconds**, **6 → 30 seconds**, **9 → 60 seconds**. An additional earlier **3 → 15** entry is historical. | **Observed PostgreSQL PASS** for all three specified thresholds and recorded durations. |
+| **LG-LOCK-149-03** | Inspect backend response following invalid password and lack of authenticated session | Terminal screenshot showed `POST /api/auth/login → 401` and `GET /api/auth/me → 401` while signed out. | **Observed generic rejection**. The `/me` 401 is an expected unauthenticated session check; it does not prove exact remaining lockout timing. |
+| **LG-LOCK-150-01** | `frontend/src/pages/auth/LoginPanel.jsx` (File 150); trigger lockout during login | Browser screenshot displayed **“Sign-in temporarily paused”**, a remaining `00:08` countdown, and a visually disabled Login button. | **Observed browser UI PASS** for countdown display and disabled Login presentation. UI countdown uses local rejected-response tracking and may diverge from server lock duration. |
+| **LG-LOCK-150-02** | Attempt to select Forgot Password while the countdown is running | Developer explicitly confirmed **Forgot Password could not be clicked** during the visible countdown. | **Developer-confirmed UI PASS**; this is not proof that the password-recovery API itself rejects a locked account. |
+| **LG-LOCK-151-FAIL** | Refresh the browser while a roughly 60-second countdown is active | Developer observed that the countdown **disappeared/reset on refresh** in File 150. | **Observed defect**, resolved by File 151. |
+| **LG-LOCK-151-FIX** | `frontend/src/pages/auth/LoginPanel.jsx` (File 151); refresh browser and reopen Login in same tab | File 151 persists an absolute UI deadline in same-tab `sessionStorage`; developer replied **“it works now!”** after testing refresh. | **Reported live PASS** for same-tab persistence. No server-synchronized timer or cross-device behavior is claimed. |
+
+**Evidence interpretation and security boundary:** The PostgreSQL `users.locked_until` timestamp and `login_account_lockout` records demonstrate **backend persistence**. The React countdown is a **user-interface aid**, not the access-control mechanism; clearing sessionStorage, closing the tab or switching devices may remove the displayed timer but must not remove the server lock. The generic `401` on account-specific failures helps avoid username enumeration. Neither the login screenshot nor the UI restriction proves that the **password-recovery endpoint** is blocked during lockout. The instructor specifies Forgot Password visibility after two failed logins, but does not explicitly require recovery to be disabled during lockout; revisit this additional UX choice before final sign-off.
+
+**Evidence available in the conversation:** November 18 screenshots of `users.failed_login_attempts`/`locked_until`, an audit-log query with recorded `3/15`, `6/30`, `9/60` values, a live countdown/disabled Login interface, a post-refresh missing-countdown defect, and subsequent developer confirmation of the File 151 correction. **Evidence files have not been claimed saved to the repository.**
 
 ---
 
@@ -164,11 +182,11 @@ The records below **supplement** the original Steps 36–50, rather than erasing
 | 2 | XSS defense | React safe text rendering used; **review needed** | Safely test `<script>alert(1)</script>` in logs/input and confirm no code executes. |
 | 3 | CSRF defense | **Reported PASS** | Record actual HTTP 403 for missing/altered token, plus success with a legitimate token. |
 | 4 | Username enumeration | **Reported PASS** | Compare unknown-user vs wrong-password/recovery responses without leaking account existence. |
-| 5 | IP blocking | Earlier security tests **reported PASS**; new **10 attempts/10 min** configuration reported PASS | Record current cross-account threshold, 10-minute block, and expiry behavior. |
-| 6 | Session hardening | Password + OTP login, 15-minute setting **reported PASS** | Verify session cookie flags, login renewal, idle expiry, logout and browser Back/direct URL. |
+| 5 | IP blocking | Earlier security tests **reported PASS**; new **10 attempts/10 min** configuration reported PASS. November 18 account lockout tests are **not** an IP-blocking verification. | Record current cross-account threshold, 10-minute block, and expiry behavior. |
+| 6 | Session hardening | Password + OTP login, 15-minute setting **reported PASS**. November 18 database screenshots independently show server-enforced account lockout; the React countdown is not a session security mechanism. | Verify session cookie flags, login renewal, idle expiry, logout and browser Back/direct URL. |
 | 7 | Password history | **Reported PASS** | Attach sanitized denial for current and previous two passwords. |
 | 8 | Honeypot | **Reported PASS** | Submit populated hidden field and prove no pending account is stored. |
-| 9 | Activity logging | Monitoring and logs developed; **partially demonstrated** | Inspect required events, IP/user agent, audit permissions and dashboard filters. |
+| 9 | Activity logging | **Observed PostgreSQL** `login_account_lockout` event rows at 3/6/9 failures with durations 15/30/60 seconds. Other event coverage remains **partially demonstrated**. | Inspect required events, IP/user agent, audit permissions and dashboard filters. |
 | 10 | Error handling | Generic handlers in examined routes; **review needed** | Submit malformed requests; confirm no stack traces/SQL details/secret values in client response. |
 | 11 | Secret protection | `.env` kept private by project convention; **full audit pending** | Audit tracked files, `.gitignore`, and Git history; do not print secrets. |
 | 12 | Security headers | Middleware/header checks **reported** | Confirm `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff` in final frontend/backend deployment. |
@@ -186,9 +204,9 @@ Use fictional test accounts with accessible email inboxes, an isolated local dat
 |---|---|---|---|
 | LG-E2E-01 | Inspect stored secrets and sensitive fields | Password, security answers, OTP, contact protected | Hashing/cryptography tests **reported PASS**; capture DB evidence. |
 | LG-E2E-02 | Send invalid registration directly without JS | Backend rejects invalid inputs | Current schema checks present; final direct API negative test evidence needed. |
-| LG-E2E-03 | Three failed logins then clear cookies | Server lockout remains | Lockout settings/tests **reported PASS**; preserve independent HTTP proof. |
-| LG-E2E-04 | Reach 3/6/9 failure tiers | **15 / 30 / 60 sec** enforced | Instructor-wide settings **reported PASS**; archive timed test. |
-| LG-E2E-05 | At lockout tier check alert email | Accurate PHT/IP/user-agent alert | Alerts earlier reported; current tier email proof needed. |
+| LG-E2E-03 | Three failed logins then clear cookies | Server lockout remains | **Backend lock confirmed in PostgreSQL Nov 18**; clearing cookies/new browser and retry denial not explicitly demonstrated. |
+| LG-E2E-04 | Reach 3/6/9 failure tiers | **15 / 30 / 60 sec** enforced | **Observed PostgreSQL PASS Nov 18:** `login_account_lockout` rows show **3→15, 6→30, 9→60**, and a future `locked_until` / `LOCKED`. Capture precise HTTP retry timing separately if required. |
+| LG-E2E-05 | At lockout tier check alert email | Accurate PHT/IP/user-agent alert | Database lockout events observed at 3/6/9; **live alert inbox evidence still needed**. |
 | LG-E2E-06 | Open protected URL before OTP completes | No protected session | OTP login working; bypass test evidence needed. |
 | LG-E2E-07 | Open Change Password URL unauthenticated | Request denied | Final HTTP authorization check needed. |
 | LG-E2E-08 | Three incorrect OTPs then correct OTP | Revoked code cannot be used | Specific negative-case evidence needed. |
@@ -212,8 +230,12 @@ Use fictional test accounts with accessible email inboxes, an isolated local dat
 | LG-E2E-26 | Register selecting Q1/Q5/Q8 (or any 3 distinct codes) | 3 hashed answers saved; Gmail OTP activates account | **Reported live PASS, Nov 17**; post-change constraint and DB row evidence recommended. |
 | LG-E2E-27 | Recover with one saved question, OTP and new password | Recovery succeeds; new password logs in, old one rejected | **Reported live PASS, Nov 17** after File 148. |
 | LG-E2E-28 | User picks duplicate or out-of-bank question | Backend rejects duplicate/Q9 and invalid answers | Local schema/client rejection checks; retain live API negative responses. |
+| **LG-E2E-29** | Password failures for verified account; inspect DB | Counter increases and lock expiration persisted | **Observed DB PASS Nov 18**: counter **9**, future `locked_until`, `LOCKED`; earlier **4** with `NULL` after expiry was also observed. |
+| **LG-E2E-30** | Query tier-by-tier lockout events | Record 3/15, 6/30, 9/60 in `activity_logs` | **Observed DB PASS Nov 18** for the required thresholds and durations. |
+| **LG-E2E-31** | Trigger lock countdown; attempt Login and Forgot Password | Controls disabled during UI countdown | **Observed screenshot** countdown and Login disabled; **developer-confirmed PASS** Forgot Password unclickable. UI-only; recovery API gate not verified. |
+| **LG-E2E-32** | Refresh while countdown active | Same-tab countdown retains remaining time | **File 150 observed FAIL**, **File 151 developer-reported PASS**. State saved in browser tab only; not authoritative after cross-browser/device attempts. |
 
-**Correction retained for traceability:** Earlier tests referenced 24/48/96-second lockouts, 3-minute OTP expiry, 9-minute idle, 14-IP threshold and fixed Q7/Q2/Q4. These were *historical development parameters* and **must not be used for final acceptance**.
+**Correction retained for traceability:** Earlier tests referenced 24/48/96-second lockouts, 3-minute OTP expiry, 9-minute idle, 14-IP threshold and fixed Q7/Q2/Q4. These were *historical development parameters* and **must not be used for final acceptance**. File 150 originally lost its local countdown on refresh; File 151 resolved that particular same-tab issue according to the developer. Exact server-synchronized UI timing is still open.
 
 ---
 
@@ -253,6 +275,31 @@ WHERE conrelid = 'public.user_security_answers'::regclass
 
 The observed **pre-fix** constraint allowed Q7/Q2/Q4 only. The developer reported executing the Q1–Q8 update; capture the *post-fix* definition as a final artifact.
 
+**Observed November 18 account-lockout evidence queries** (read-only; replace `TEST_USERNAME` with a fictional test account when running locally; do not publish actual usernames):
+
+```sql
+SELECT username, failed_login_attempts, locked_until,
+       CASE WHEN locked_until > NOW() THEN 'LOCKED' ELSE 'NOT LOCKED' END AS lockout_status
+FROM public.users
+WHERE LOWER(username) = LOWER('TEST_USERNAME');
+```
+
+```sql
+SELECT created_at,
+       details->>'failed_attempts' AS failed_attempts,
+       details->>'duration_seconds' AS lockout_seconds
+FROM public.activity_logs
+WHERE event_type = 'login_account_lockout'
+  AND user_id = (
+      SELECT id_number FROM public.users
+      WHERE LOWER(username) = LOWER('TEST_USERNAME')
+  )
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+**Directly shared results:** Database screenshot showed **9 failed attempts** and `LOCKED` with a stored future timestamp; audit events included **3 / 15 s**, **6 / 30 s**, **9 / 60 s**, plus an older **3 / 15 s** event. These are read-only screenshot observations, not an automated test script or a reproduction in another environment.
+
 **Frontend verification** (from `LabGear/frontend`):
 
 ```powershell
@@ -260,7 +307,7 @@ Get-Content -Raw .\src\services\passwordRecoveryApi.js | node --input-type=modul
 npm run build
 ```
 
-The 2082-modules Vite build output belongs to an **earlier frontend checkpoint**. Run and archive a fresh build after the final source changes rather than mislabeling the older result as a File 148 build.
+The 2082-modules Vite build output belongs to an **earlier frontend checkpoint**. Run and archive a fresh build after **File 151** rather than mislabeling the older result as a current build. The developer confirmed the browser countdown refresh behavior; a fresh `npm run build` result after File 151 has not been shared.
 
 **Runtime authentication check:** A signed-out `GET /api/auth/me` may correctly return **401 Unauthorized**. During password recovery, confirm a **POST `/api/auth/password-recovery`** appears after validation and CAPTCHA; the earlier client-side bug prevented that POST. Do not mistake the `/me` 401 entries for a recovery failure.
 
@@ -284,7 +331,7 @@ LabGear/
 
 Suggested filename scheme: `LG-<ID>_YYYY-MM-DD_<short-topic>.png`. Example: `LG-QUESTION-DB-2026-11-17_constraint.png`. Example names are **not** claims that evidence files exist.
 
-- Capture the actual command/action and result (status code or safe success/failure), not private secrets.
+- Capture the actual command/action and result (status code or safe success/failure), not private secrets. For the lockout screenshots, preserve tier/duration values while obscuring the test username and any identifying user IDs.
 - Mask OTP codes, security answers, passwords, recovery tokens, account IDs, personal addresses, recipient email addresses and cookie values.
 - Keep at least one passing and one deliberately rejected scenario for each high-risk control when preparing final evidence.
 - The **user-reported** test outcomes are useful development history, but attach sanitized screenshots/transcripts where the instructor expects proof.
@@ -318,13 +365,13 @@ Copy this block for future tests. Never overwrite earlier failures or their fixe
 The software has progressed well beyond the November 6 documentation snapshot. The following are **evidence and delivery checks**, not assertions that the features are absent:
 
 1. **Latest-state capture:** Attach a sanitized full registration → Gmail OTP → login → Q1–Q8 recovery → OTP → password reset → new login sequence (already **reported passed**).
-2. **Mandatory security negative tests:** Verify and archive IP threshold 10, lockout tier timing, OTP expiry/attempt limits/resend, session idle 15 minutes, XSS/SQL injection, CSRF, cookie protections, and authorization denials.
+2. **Mandatory security negative tests:** **Lockout tier records are directly evidenced (3/15, 6/30, 9/60 on Nov 18)**. Still verify/record IP threshold 10, exact lockout rejection timing after browser/cookie resets, OTP expiry/attempt limits/resend, session idle 15 minutes, XSS/SQL injection, CSRF, cookie protections and authorization denials.
 3. **Database protections:** Capture Q1–Q8 CHECK definition, hashing/encryption evidence, contact decryption authorization and append-only logging permissions.
 4. **Functional demonstration:** Capture an authorized equipment/reservation/approval/return/damage sequence with PostgreSQL state, and relevant admin monitoring/role checks.
-5. **Submission readiness:** Fresh Vite build/backend startup, Git changes/.gitignore/full-history secret audit, safe SQL dump/test accounts, and instructor-required documents/commit record.
+5. **Submission readiness:** Fresh Vite build (after File 151)/backend startup, Git changes/.gitignore/full-history secret audit, safe SQL dump/test accounts, and instructor-required documents/commit record. The local countdown works after refresh in one tab but is not synchronized across browsers/devices; password-recovery endpoint access during lockout is unverified.
 
-**Status as of November 17, 2026:** Core integrated authentication and selected-question recovery **developer-reported PASS**; uniform settings **developer-reported PASS**; final independent security evidence and repository/submission audit **not yet complete in this document**. Do not equate absence of an attached screenshot with a failed implementation.
+**Status as of November 18, 2026:** Core integrated authentication and selected-question recovery **developer-reported PASS**; the 3/6/9 account lockout database records and lockout durations are **directly evidenced**, with a refresh-persistent UI countdown **developer-confirmed working** after File 151. IP-blocking, cross-device timer synchronization, password-recovery API behavior during lockout, and the final independent security evidence/repository audit **remain open**. Do not equate absence of an attached screenshot with a failed implementation.
 
 ---
 
-*Documentation basis: original `docs/TEST_LOG.md` (version 1.0 dated Nov 6), original `docs/SECURITY_REQUIREMENTS.md`, subsequent development/source artifacts and directly shared outputs through File 148, and the instructor's November 16 uniform-settings notice. The November 17 report records user-confirmed outcomes without inventing unavailable console transcripts.*
+*Documentation basis: existing `docs/TEST_LOG.md` version 2.0 (Nov 17), updated `docs/SECURITY_REQUIREMENTS.md` version 2.1, the instructor's Nov 16 uniform-settings notice, Files 149–151, and November 18 shared pgAdmin/frontend/terminal screenshots and user test confirmations. Unverified behaviors remain explicitly labeled as such.*
